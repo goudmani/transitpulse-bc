@@ -95,7 +95,14 @@ resource "aws_lambda_function" "poller" {
   function_name = "${var.name}-poller"
   role          = aws_iam_role.poller.arn
   timeout       = 120
-  memory_size   = 1024
+
+  # 512, not 1024. Lambda memory also buys CPU, and 1 GB was chosen so protobuf
+  # parsing would finish fast. That no longer applies: the function now paces
+  # its Kinesis writes to stay under the shard's 1,000 rec/sec limit and spends
+  # most of a ~24s invocation asleep. Slower parsing just means _pace() sleeps
+  # less, so wall time barely moves while GB-seconds halve. Observed peak usage
+  # is ~109 MB.
+  memory_size = 512
 
   package_type     = var.poller_package_type
   image_uri        = local.poller_is_zip ? null : var.poller_image

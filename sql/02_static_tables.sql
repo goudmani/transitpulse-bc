@@ -17,14 +17,24 @@ WITH SERDEPROPERTIES ('separatorChar' = ',', 'quoteChar' = '"')
 LOCATION 's3://${BUCKET}/static/gtfs/version=${VERSION}/routes/'
 TBLPROPERTIES ('skip.header.line.count' = '1');
 
+-- Column ORDER is load-bearing: OpenCSVSerde maps positionally and ignores
+-- these names. TransLink's trips.txt includes trip_short_name, which GTFS
+-- treats as optional and the generic DDL omitted -- leaving direction_id
+-- holding trip short names, block_id holding direction ids, and so on, with
+-- no error anywhere. Verify against the real header before trusting this:
+--   aws s3api get-object --bucket <bronze> --key <...>/trips.txt \
+--     --range bytes=0-400 /dev/stdout | head -1
 CREATE EXTERNAL TABLE IF NOT EXISTS transitpulse.dim_trips (
-  route_id      string,
-  service_id    string,
-  trip_id       string,
-  trip_headsign string,
-  direction_id  string,
-  block_id      string,
-  shape_id      string
+  route_id              string,
+  service_id            string,
+  trip_id               string,
+  trip_headsign         string,
+  trip_short_name       string,
+  direction_id          string,
+  block_id              string,
+  shape_id              string,
+  wheelchair_accessible string,
+  bikes_allowed         string
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES ('separatorChar' = ',', 'quoteChar' = '"')
@@ -41,7 +51,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS transitpulse.dim_stops (
   zone_id        string,
   stop_url       string,
   location_type  string,
-  parent_station string
+  parent_station string,
+  wheelchair_boarding string
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES ('separatorChar' = ',', 'quoteChar' = '"')
@@ -57,7 +68,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS transitpulse.dim_stop_times (
   stop_headsign       string,
   pickup_type         string,
   drop_off_type       string,
-  shape_dist_traveled string
+  shape_dist_traveled string,
+  timepoint           string
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES ('separatorChar' = ',', 'quoteChar' = '"')

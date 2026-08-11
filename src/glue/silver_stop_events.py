@@ -19,7 +19,9 @@ from pyspark.context import SparkContext
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
-ARGS = getResolvedOptions(sys.argv, ["JOB_NAME", "run_date", "bronze_db", "silver_table"])
+ARGS = getResolvedOptions(
+    sys.argv, ["JOB_NAME", "run_date", "bronze_db", "bronze_bucket", "silver_table"]
+)
 
 SC = SparkContext.getOrCreate()
 GLUE = GlueContext(SC)
@@ -45,6 +47,7 @@ def resolve_run_date(raw: str) -> str:
 
 RUN_DATE = resolve_run_date(ARGS["run_date"])
 BRONZE_DB = ARGS["bronze_db"]
+BRONZE_BUCKET = ARGS["bronze_bucket"]
 SILVER_TABLE = ARGS["silver_table"]
 
 KEY = ["start_date", "trip_id", "stop_id"]
@@ -55,9 +58,20 @@ DELAY_CEILING_SEC = 7200
 
 
 def read_trip_updates() -> DataFrame:
+    """Read one day of bronze straight from S3, not through the Data Catalog.
+
+    bronze_trip_updates uses Athena *partition projection*: partitions are
+    computed from a formula at query time and never written to the catalog
+    (`aws glue get-partitions` returns 0). That is an Athena-only feature --
+    Spark asks the catalog for a partition list, gets an empty one, and reads
+    zero files while the job still reports SUCCEEDED.
+
+    The Firehose prefix is deterministic, so addressing it directly avoids the
+    catalog entirely. The dim_* tables are unpartitioned and still resolve
+    through the catalog normally.
+    """
     return (
-        SPARK.table(f"{BRONZE_DB}.bronze_trip_updates")
-        .where(F.col("dt") == F.lit(RUN_DATE))
+        SPARK.read.parquet(f"s3://{BRONZE_BUCKET}/raw/trip_updates/dt={RUN_DATE}/")
         .where(F.col("trip_id").isNotNull())
         .where(F.col("stop_id").isNotNull())
         .where(F.col("start_date").isNotNull())
@@ -130,7 +144,12 @@ def derive(events: DataFrame) -> DataFrame:
     trip_window = Window.partitionBy("start_date", "trip_id")
     return (
         events.withColumn("service_date", F.to_date(F.col("start_date"), "yyyyMMdd"))
-        .withColumn("observed_arrival_ts", F.to_timestamp(F.col("observed_arrival_epoch")))
+        # timestamp_seconds, not to_timestamp. observed_arrival_epoch is a bigint
+        # of epoch seconds; to_timestamp() expects a string and would implicitly
+        # cast, fail to parse "1786479340" against yyyy-MM-dd HH:mm:ss, and return
+        # NULL -- silently nulling hour_of_day, day_of_week, is_weekend and
+        # minutes_since_service_start, with the job still reporting success.
+        .withColumn("observed_arrival_ts", F.timestamp_seconds(F.col("observed_arrival_epoch")))
         .withColumn("hour_of_day", F.hour("observed_arrival_ts"))
         .withColumn("day_of_week", F.dayofweek("observed_arrival_ts"))
         .withColumn("is_weekend", F.col("day_of_week").isin(1, 7).cast("int"))

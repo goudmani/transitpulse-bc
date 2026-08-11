@@ -58,6 +58,17 @@ FEEDS = {
 MAX_RECORDS_PER_PUT = 500  # Kinesis PutRecords hard limit
 HTTP_TIMEOUT = 15
 
+# One Kinesis shard accepts 1,000 records/sec. Left unpaced, a single poll fires
+# ~11,000 records in ~4.5s -- about 2,400/sec -- which throttled hard enough that
+# _flush() exhausted its retries, failed the invocation, and EventBridge re-ran
+# the whole poll (republishing everything that had already landed).
+#
+# The function has a 120s timeout and only needs a few seconds of real work, so
+# the cheapest fix is to spend some of that budget deliberately rather than pay
+# for a second shard. 900/sec leaves headroom under the limit.
+TARGET_RECORDS_PER_SEC = 900
+_MIN_BATCH_INTERVAL = MAX_RECORDS_PER_PUT / TARGET_RECORDS_PER_SEC
+
 _api_key_cache: str | None = None
 
 
@@ -161,9 +172,22 @@ def _flush(batch: list[dict[str, Any]], attempts: int = 4) -> int:
     raise RuntimeError(f"{len(pending)} records failed after {attempts} attempts")
 
 
+def _pace(last_send: float) -> float:
+    """Sleep only if the previous batch went out faster than the target rate.
+
+    Returns the timestamp of this send, to be passed back in on the next call.
+    """
+    if last_send:
+        overdue = _MIN_BATCH_INTERVAL - (time.monotonic() - last_send)
+        if overdue > 0:
+            time.sleep(overdue)
+    return time.monotonic()
+
+
 def publish(records: Iterator[dict[str, Any]]) -> int:
     batch: list[dict[str, Any]] = []
     sent = 0
+    last_send = 0.0
     for record in records:
         batch.append(
             {
@@ -172,9 +196,11 @@ def publish(records: Iterator[dict[str, Any]]) -> int:
             }
         )
         if len(batch) == MAX_RECORDS_PER_PUT:
+            last_send = _pace(last_send)
             sent += _flush(batch)
             batch = []
     if batch:
+        _pace(last_send)
         sent += _flush(batch)
     return sent
 

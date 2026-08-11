@@ -4,7 +4,12 @@ locals {
     "--conf spark.sql.catalog.glue_catalog.warehouse=${replace(var.silver_arn, "arn:aws:s3:::", "s3://")}/iceberg/",
     "--conf spark.sql.catalog.glue_catalog.catalog-impl=org.apache.iceberg.aws.glue.GlueCatalog",
     "--conf spark.sql.catalog.glue_catalog.io-impl=org.apache.iceberg.aws.s3.S3FileIO",
-    "--conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions"
+    "--conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+    # sql/03 creates observed_arrival_ts via Athena, which types it as
+    # "timestamp without timezone". Spark's Iceberg connector refuses that type
+    # outright unless this is set. It changes how values are displayed, not how
+    # they are stored.
+    "--conf spark.sql.iceberg.handle-timestamp-without-timezone=true"
   ])
 
   scripts = {
@@ -157,14 +162,23 @@ resource "aws_glue_job" "job" {
     "--enable-continuous-cloudwatch-log" = "true"
     "--enable-spark-ui"                  = "true"
     "--spark-event-logs-path"            = "s3://${var.artifacts_bucket}/spark-logs/"
-    "--TempDir"                          = "s3://${var.artifacts_bucket}/glue-temp/"
-    "--datalake-formats"                 = "iceberg"
-    "--conf"                             = local.iceberg_conf
-    "--bronze_db"                        = var.glue_db
-    "--glue_db"                          = var.glue_db
-    "--silver_table"                     = "glue_catalog.${var.glue_db}.stop_events"
-    "--gold_bucket"                      = replace(var.gold_arn, "arn:aws:s3:::", "")
-    "--run_date"                         = "AUTO"
+
+    # Without this, Spark uses an empty local Hive metastore and every
+    # SPARK.table("transitpulse.bronze_trip_updates") fails with
+    # "Table or view not found" even though the table exists in the Glue
+    # Data Catalog. The Iceberg glue_catalog configured below is a *separate*
+    # catalog used only for the silver table; the bronze and dim tables are
+    # read through the default catalog, which is what this flag points at Glue.
+    "--enable-glue-datacatalog" = "true"
+    "--TempDir"                 = "s3://${var.artifacts_bucket}/glue-temp/"
+    "--datalake-formats"        = "iceberg"
+    "--conf"                    = local.iceberg_conf
+    "--bronze_db"               = var.glue_db
+    "--bronze_bucket"           = replace(var.bronze_arn, "arn:aws:s3:::", "")
+    "--glue_db"                 = var.glue_db
+    "--silver_table"            = "glue_catalog.${var.glue_db}.stop_events"
+    "--gold_bucket"             = replace(var.gold_arn, "arn:aws:s3:::", "")
+    "--run_date"                = "AUTO"
   }
 
   depends_on = [aws_s3_object.scripts]
