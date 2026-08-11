@@ -332,8 +332,8 @@ resource "aws_sfn_state_machine" "etl" {
         Type     = "Task"
         Resource = "arn:aws:states:::sns:publish"
         Parameters = {
-          TopicArn = var.alerts_topic_arn
-          Subject  = "TransitPulse: data quality gate FAILED"
+          TopicArn    = var.alerts_topic_arn
+          Subject     = "TransitPulse: data quality gate FAILED"
           "Message.$" = "States.Format('Data quality checks failed for run_date {}. Gold features were NOT rebuilt. Inspect s3 dq/ results before promoting.', $.run_date)"
         }
         Next = "FailDueToDataQuality"
@@ -349,8 +349,8 @@ resource "aws_sfn_state_machine" "etl" {
         Type     = "Task"
         Resource = "arn:aws:states:::sns:publish"
         Parameters = {
-          TopicArn = var.alerts_topic_arn
-          Subject  = "TransitPulse: ETL pipeline failed"
+          TopicArn    = var.alerts_topic_arn
+          Subject     = "TransitPulse: ETL pipeline failed"
           "Message.$" = "States.Format('ETL failed for run_date {}. Check the Step Functions execution history.', $.run_date)"
         }
         Next = "FailPipeline"
@@ -370,8 +370,8 @@ resource "aws_sfn_state_machine" "etl" {
 
 # Fires 20 minutes past the hour so Firehose has flushed its buffer.
 resource "aws_cloudwatch_event_rule" "etl_hourly" {
-  name                = "${var.name}-etl-hourly"
-  description         = "Run the ETL state machine every hour"
+  name        = "${var.name}-etl-hourly"
+  description = "Run the ETL state machine every hour"
   # Daily, not hourly. Hourly meant 24 executions x 3 Glue jobs = 72 runs/day,
   # roughly $150/month, for training data that is only consumed by a weekly
   # retrain. Serving freshness comes from the online path (Kinesis -> Lambda ->

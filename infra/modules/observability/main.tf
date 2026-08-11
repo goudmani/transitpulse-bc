@@ -102,12 +102,37 @@ resource "aws_cloudwatch_metric_alarm" "model_mae_degraded" {
 # --------------------------------------------------------------------------
 # Cost circuit breaker. Billing metrics live only in us-east-1.
 # --------------------------------------------------------------------------
+# CloudWatch requires every alarm action to live in the alarm's own region, and
+# AWS/Billing metrics are published only in us-east-1. So the billing alarm
+# cannot target the primary-region SNS topic or invoke the killswitch Lambda
+# directly. It publishes to a us-east-1 topic instead, which fans out to both.
+resource "aws_sns_topic" "billing_alerts" {
+  provider = aws.useast1
+  name     = "${var.name}-billing-alerts"
+}
+
+resource "aws_sns_topic_subscription" "billing_email" {
+  provider  = aws.useast1
+  topic_arn = aws_sns_topic.billing_alerts.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+# SNS supports cross-region Lambda subscriptions, which is what carries the
+# signal back to the killswitch in the primary region.
+resource "aws_sns_topic_subscription" "billing_killswitch" {
+  provider  = aws.useast1
+  topic_arn = aws_sns_topic.billing_alerts.arn
+  protocol  = "lambda"
+  endpoint  = var.killswitch_function_arn
+}
+
 resource "aws_lambda_permission" "cost_alarm" {
-  statement_id  = "AllowCloudWatchAlarmInvokeKillswitch"
+  statement_id  = "AllowBillingTopicInvokeKillswitch"
   action        = "lambda:InvokeFunction"
   function_name = var.killswitch_function_arn
-  principal     = "lambda.alarms.cloudwatch.amazonaws.com"
-  source_arn    = aws_cloudwatch_metric_alarm.estimated_charges.arn
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.billing_alerts.arn
 }
 
 resource "aws_cloudwatch_metric_alarm" "estimated_charges" {
@@ -128,10 +153,7 @@ resource "aws_cloudwatch_metric_alarm" "estimated_charges" {
     Currency = "USD"
   }
 
-  alarm_actions = [
-    var.alerts_topic_arn,
-    var.killswitch_function_arn
-  ]
+  alarm_actions = [aws_sns_topic.billing_alerts.arn]
 }
 
 resource "aws_cloudwatch_dashboard" "main" {

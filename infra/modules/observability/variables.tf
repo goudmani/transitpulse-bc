@@ -34,3 +34,8 @@ variable "daily_cost_threshold_usd" {
   type    = number
   default = 3
 }
+
+variable "alert_email" {
+  description = "Subscribed to the us-east-1 billing topic. The main alerts topic lives in the primary region and a us-east-1 alarm cannot target it."
+  type        = string
+}

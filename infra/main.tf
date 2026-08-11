@@ -33,20 +33,20 @@ module "lake" {
 module "ingest" {
   source = "./modules/ingest"
 
-  name             = local.name
-  acct             = local.acct
-  region           = var.region
-  bronze_bucket    = module.lake.bucket_names["bronze"]
-  bronze_arn       = module.lake.bucket_arns["bronze"]
-  glue_db          = module.lake.glue_db
-  alerts_topic_arn = aws_sns_topic.alerts.arn
+  name                = local.name
+  acct                = local.acct
+  region              = var.region
+  bronze_bucket       = module.lake.bucket_names["bronze"]
+  bronze_arn          = module.lake.bucket_arns["bronze"]
+  glue_db             = module.lake.glue_db
+  alerts_topic_arn    = aws_sns_topic.alerts.arn
   poller_package_type = var.poller_package_type
   poller_image        = "${local.acct}.dkr.ecr.${var.region}.amazonaws.com/${local.name}/poller:${var.poller_image_tag}"
   poller_zip_path     = "../build/poller.zip"
-  secret_name      = var.translink_secret_name
-  gtfs_static_url  = var.gtfs_static_url
-  online_table_arn = module.serving.online_table_arn
-  online_table     = module.serving.online_table_name
+  secret_name         = var.translink_secret_name
+  gtfs_static_url     = var.gtfs_static_url
+  online_table_arn    = module.serving.online_table_arn
+  online_table        = module.serving.online_table_name
 }
 
 module "etl" {
@@ -102,6 +102,7 @@ module "observability" {
   name                     = local.name
   region                   = var.region
   alerts_topic_arn         = aws_sns_topic.alerts.arn
+  alert_email              = var.alert_email
   poller_function_name     = module.ingest.poller_function_name
   poller_log_group         = module.ingest.poller_log_group
   poller_dlq_name          = module.ingest.poller_dlq_name

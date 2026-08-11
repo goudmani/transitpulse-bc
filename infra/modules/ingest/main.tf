@@ -104,8 +104,15 @@ resource "aws_lambda_function" "poller" {
   handler          = local.poller_is_zip ? "handler.lambda_handler" : null
   source_code_hash = local.poller_zip_ok ? filebase64sha256(var.poller_zip_path) : null
 
-  # A scheduler misfire must not fan out into hundreds of concurrent polls.
-  reserved_concurrent_executions = 2
+  # No reserved concurrency. A new AWS account starts with an account-wide
+  # Lambda concurrency quota of 10 rather than the usual 1000, and reserving
+  # any of it drops UnreservedConcurrentExecutions below the required minimum
+  # of 10 -- PutFunctionConcurrency rejects it outright.
+  #
+  # The guardrail this replaced ("a scheduler misfire must not fan out into
+  # hundreds of concurrent polls") is already provided by that account quota:
+  # nothing here can exceed 10 concurrent executions in total. Set this back to
+  # 2 after requesting a Service Quotas increase for concurrent executions.
 
   environment {
     variables = {
