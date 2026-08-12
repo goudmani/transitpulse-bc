@@ -97,7 +97,7 @@ make init plan apply
 
 ## Cost
 
-Roughly $30–45/month at ~4M events/day. See `docs/adr/003-no-nat-gateway.md`
+Roughly $30–45/month at ~16M events/day. See `docs/adr/003-no-nat-gateway.md`
 and `docs/adr/004-serverless-inference.md` for the two decisions that dominate
 that figure.
 
