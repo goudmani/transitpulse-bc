@@ -1,0 +1,52 @@
+TRANSITPULSE-MASTER-GUIDE.md
+
+# --- credentials: never commit ---
+.env
+.env.*
+*.pem
+.aws/
+
+# --- terraform ---
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+tf.plan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# tfvars may hold emails/account ids; envs/ is intentionally tracked
+*.auto.tfvars
+terraform.tfvars
+
+# --- build artifacts ---
+build/
+infra/modules/*/build/
+dist/
+*.zip
+
+# --- python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- data / local scratch ---
+weather.parquet
+*.parquet
+tests/fixtures/offline_sample.json
+
+# --- os / editor ---
+.DS_Store
+.ipynb_checkpoints/

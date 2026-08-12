@@ -1,0 +1,19 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["notebooks", "build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Glue and SageMaker entry points import awsglue / sagemaker, which only exist
+# in their managed runtimes and are not installed locally.
+"src/glue/*.py" = ["E402"]
+"src/serving/predict/handler.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "src/ingest"]
+addopts = "-q"

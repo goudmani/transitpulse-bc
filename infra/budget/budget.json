@@ -1,0 +1,12 @@
+{
+  "BudgetName": "transitpulse-monthly",
+  "BudgetLimit": {
+    "Amount": "40",
+    "Unit": "USD"
+  },
+  "TimeUnit": "MONTHLY",
+  "BudgetType": "COST",
+  "CostTypes": {
+    "IncludeCredit": false
+  }
+}
