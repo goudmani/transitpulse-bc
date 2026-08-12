@@ -46,6 +46,8 @@ htmlcov/
 weather.parquet
 *.parquet
 tests/fixtures/offline_sample.json
+docs/interview-brief.html
+docs/portfolio-brief.md
 
 # --- os / editor ---
 .DS_Store

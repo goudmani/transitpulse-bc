@@ -73,10 +73,10 @@ check: ## Daily operational health check
 
 .PHONY: pause
 pause: ## Stop ingestion (keeps everything else alive)
-	aws events disable-rule --name transitpulse-poll-1min --region $(REGION)
+	aws events disable-rule --name transitpulse-poll --region $(REGION)
 	@echo "ingestion paused"
 
 .PHONY: resume
 resume: ## Resume ingestion
-	aws events enable-rule --name transitpulse-poll-1min --region $(REGION)
+	aws events enable-rule --name transitpulse-poll --region $(REGION)
 	@echo "ingestion resumed"
