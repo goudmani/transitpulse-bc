@@ -11,10 +11,10 @@ schedule — all provisioned by Terraform and deployed through GitHub Actions.
 
 | Predictor | MAE (seconds) |
 |---|---|
-| Published schedule (predict 0 delay) | _fill from `sql/04_baselines.sql`_ |
-| Persistence (bus stays as late as it is) | _fill_ |
-| Historical median for route/stop/hour | _fill_ |
-| **XGBoost model** | _fill_ |
+| Published schedule (predict 0 delay) |  |
+| Persistence (bus stays as late as it is) |  |
+| Historical median for route/stop/hour |  |
+| **XGBoost model** |  |
 
 Measured on a time-based hold-out split. Numbers are reproducible from the
 Iceberg snapshot recorded in the model registry.
@@ -26,7 +26,38 @@ Lambda → DynamoDB online features } → Glue PySpark (bronze → silver Iceber
 gold) → SageMaker Pipeline (train → evaluate → quality gate → registry) →
 Serverless Inference endpoint → Lambda → API Gateway.
 
+### ETL orchestration
+
+![Step Functions state machine: silver, data quality gate, gold](img/stepfunctions_graph.png)
+
+The nightly ETL is a Step Functions state machine, not a chain of cron jobs. The
+detail worth noting is that **data quality failure and infrastructure failure
+take different branches**:
+
+- `DataQualityChecks` exits non-zero → `QuarantinePartition` → the gold layer is
+  never rebuilt, the bad partition stays inspectable in S3, and an SNS alert
+  fires. Bad data cannot reach the model.
+- Any other task failing → `NotifyFailure` → `FailPipeline`.
+
+Both are failures, but they are different problems and deserve different
+responses. Treating them identically would either crash the pipeline on
+recoverable data issues or silently promote bad data on a retry.
+
 Decisions and their trade-offs are recorded in `docs/adr/`.
+
+STATUS: 
+```bash
+aws stepfunctions list-executions --state-machine-arn $SM \
+--query "executions[0].{Status:status,Name:name}" --output table
+```
+
+-----------------------------------------------------
+|                  ListExecutions                   |
++----------------------------------------+----------+
+|                  Name                  | Status   |
++----------------------------------------+----------+
+|  c2e37e90-6814-49f0-bc36-281a2dfc78a1  |  RUNNING |
++----------------------------------------+----------+
 
 ## Repository layout
 
@@ -77,3 +108,4 @@ that figure.
 - One Kinesis shard caps throughput at 1,000 records/sec; a second agency
   would need a second shard.
 - Iceberg small files will need periodic compaction beyond a few months of data.
+
