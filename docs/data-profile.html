@@ -1,0 +1,334 @@
+<title>Transit Delay Profile</title>
+<style>
+  .viz {
+    color-scheme: light;
+    --plane:      #f9f9f7;
+    --surface:    #fcfcfb;
+    --ink:        #0b0b0b;
+    --ink-2:      #52514e;
+    --muted:      #898781;
+    --grid:       #e1e0d9;
+    --axis:       #c3c2b7;
+    --ring:       rgba(11,11,11,0.10);
+    --early:      #2a78d6;
+    --ontime:     #898781;
+    --late:       #e34948;
+    --s1:         #2a78d6;
+    --s2:         #eb6834;
+    --warn-bg:    #fdf6ec;
+    --warn-edge:  #eda100;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz {
+      color-scheme: dark;
+      --plane:   #0d0d0d;
+      --surface: #1a1a19;
+      --ink:     #ffffff;
+      --ink-2:   #c3c2b7;
+      --muted:   #898781;
+      --grid:    #2c2c2a;
+      --axis:    #383835;
+      --ring:    rgba(255,255,255,0.10);
+      --early:   #3987e5;
+      --ontime:  #898781;
+      --late:    #e66767;
+      --s1:      #3987e5;
+      --s2:      #d95926;
+      --warn-bg: #241d12;
+      --warn-edge: #c98500;
+    }
+  }
+  :root[data-theme="dark"] .viz {
+    color-scheme: dark;
+    --plane:   #0d0d0d;
+    --surface: #1a1a19;
+    --ink:     #ffffff;
+    --ink-2:   #c3c2b7;
+    --muted:   #898781;
+    --grid:    #2c2c2a;
+    --axis:    #383835;
+    --ring:    rgba(255,255,255,0.10);
+    --early:   #3987e5;
+    --ontime:  #898781;
+    --late:    #e66767;
+    --s1:      #3987e5;
+    --s2:      #d95926;
+    --warn-bg: #241d12;
+    --warn-edge: #c98500;
+  }
+
+  body {
+    background: var(--plane);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 1.25rem 6rem;
+  }
+  .viz { max-width: 60rem; margin: 0 auto; }
+
+  header { padding: 4rem 0 2rem; }
+  .eyebrow {
+    font-size: .7rem; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 .9rem;
+  }
+  h1 {
+    font-size: clamp(1.9rem, 4.5vw, 2.6rem); line-height: 1.08;
+    letter-spacing: -.025em; font-weight: 680; margin: 0 0 .8rem;
+    text-wrap: balance;
+  }
+  .sub { color: var(--ink-2); max-width: 34rem; margin: 0; }
+
+  section { margin-bottom: 3.5rem; }
+  h2 {
+    font-size: 1.15rem; font-weight: 640; letter-spacing: -.012em;
+    margin: 0 0 .25rem;
+  }
+  .note { color: var(--ink-2); font-size: .92rem; margin: 0 0 1.4rem; max-width: 38rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--ring);
+    border-radius: 4px;
+    padding: 1.4rem 1.5rem 1.1rem;
+  }
+
+  /* stat row */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem,1fr));
+           gap: 1px; background: var(--ring); border: 1px solid var(--ring);
+           border-radius: 4px; overflow: hidden; margin-bottom: 2.5rem; }
+  .stat { background: var(--surface); padding: 1rem 1.1rem; }
+  .stat b { display: block; font-size: 1.5rem; font-weight: 660; letter-spacing: -.02em; }
+  .stat span { display: block; font-size: .68rem; letter-spacing: .1em;
+               text-transform: uppercase; color: var(--muted); margin-top: .2rem; }
+
+  /* horizontal bars */
+  .hbar { display: grid; grid-template-columns: 7.5rem 1fr 4.5rem;
+          align-items: center; gap: .75rem; margin-bottom: 6px; }
+  .hbar .lab { font-size: .82rem; color: var(--ink-2); text-align: right; }
+  .hbar .track { height: 22px; position: relative; }
+  .hbar .fill { height: 100%; border-radius: 0 3px 3px 0; }
+  .hbar .val { font-size: .82rem; color: var(--ink-2);
+               font-variant-numeric: tabular-nums; }
+
+  .legend { display: flex; gap: 1.1rem; flex-wrap: wrap;
+            font-size: .8rem; color: var(--ink-2); margin-bottom: 1rem; }
+  .legend i { width: 10px; height: 10px; border-radius: 2px;
+              display: inline-block; margin-right: .38rem; vertical-align: -1px; }
+
+  .scroll { overflow-x: auto; }
+  svg { display: block; width: 100%; height: auto; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .axisline { stroke: var(--axis); stroke-width: 1; }
+  .tick { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .axlabel { fill: var(--muted); font-size: 10px; letter-spacing: .08em;
+             text-transform: uppercase; }
+  .bar { fill: var(--s1); }
+  .bar:hover, .hot:hover + .bar { fill: var(--s2); }
+  .hot { fill: transparent; cursor: pointer; }
+
+  .callout {
+    background: var(--warn-bg);
+    border: 1px solid var(--ring);
+    border-left: 3px solid var(--warn-edge);
+    border-radius: 3px;
+    padding: 1.15rem 1.35rem;
+    margin: 1.5rem 0;
+    font-size: .93rem;
+  }
+  .callout p { margin: 0 0 .7rem; }
+  .callout p:last-child { margin: 0; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .86em;
+         background: var(--plane); padding: .1em .35em; border-radius: 2px; }
+
+  table { border-collapse: collapse; width: 100%; font-size: .82rem;
+          font-variant-numeric: tabular-nums; min-width: 26rem; }
+  th { text-align: right; font-size: .66rem; letter-spacing: .09em;
+       text-transform: uppercase; color: var(--muted); font-weight: 500;
+       padding: 0 .8rem .45rem 0; border-bottom: 1px solid var(--axis); }
+  th:first-child, td:first-child { text-align: left; }
+  td { text-align: right; padding: .34rem .8rem .34rem 0;
+       border-bottom: 1px solid var(--grid); color: var(--ink-2); }
+  details { margin-top: 1.2rem; }
+  summary { cursor: pointer; font-size: .82rem; color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="viz">
+
+<header>
+  <p class="eyebrow">TransitPulse BC · 2026-08-11 → 08-12 · preliminary</p>
+  <h1>What Metro Vancouver's buses actually do</h1>
+  <p class="sub">775,092 stop arrivals from TransLink's live GTFS-Realtime feed, collapsed from 16.7 million raw predictions. Two days of collection — enough to profile the data, not yet enough to model it.</p>
+</header>
+
+<div class="stats">
+  <div class="stat"><b>775,092</b><span>arrivals</span></div>
+  <div class="stat"><b>36.9%</b><span>on time</span></div>
+  <div class="stat"><b>40.4%</b><span>late</span></div>
+  <div class="stat"><b>22.6%</b><span>early</span></div>
+  <div class="stat"><b>25:1</b><span>collapse ratio</span></div>
+</div>
+
+<section>
+  <h2>Buses are late more often than early — but not by much</h2>
+  <p class="note">Delay against the published schedule. "On time" is within one minute either way. The distribution is wide in both directions, which is why the model predicts <em>signed</em> delay rather than lateness.</p>
+
+  <div class="card">
+    <div class="legend">
+      <span><i style="background:var(--early)"></i>early</span>
+      <span><i style="background:var(--ontime)"></i>on time</span>
+      <span><i style="background:var(--late)"></i>late</span>
+    </div>
+    <div id="dist"></div>
+  </div>
+</section>
+
+<section>
+  <h2>Service volume follows the working day</h2>
+  <p class="note">Arrivals per hour, Vancouver local time. The 46× swing between 3am and the afternoon peak is the feed accurately reflecting how many buses are on the road.</p>
+  <div class="card scroll"><svg id="vol" viewBox="0 0 720 250" role="img" aria-label="Arrivals per hour of day"></svg></div>
+</section>
+
+<section>
+  <h2>Delay does not follow volume</h2>
+  <p class="note">Mean and 90th-percentile delay by hour. The busiest hours are not the worst ones — the 2pm spike sits well before peak volume, and the quietest hour of the night carries a higher mean delay than the morning rush.</p>
+  <div class="card scroll">
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>mean delay</span>
+      <span><i style="background:var(--s2)"></i>90th percentile</span>
+    </div>
+    <svg id="delay" viewBox="0 0 720 250" role="img" aria-label="Mean and p90 delay by hour of day"></svg>
+  </div>
+
+  <div class="callout">
+    <p><strong>This chart exposed a bug.</strong> <code>hour_of_day</code> is derived from <code>observed_arrival_ts</code>, which is UTC. But <code>PEAK_HOURS = {7, 8, 15, 16, 17}</code> in <code>gold_features.py</code> was written for <em>local</em> hours.</p>
+    <p>In UTC those are 00:00, 01:00, 08:00, 09:00 and 10:00 Vancouver time — so <code>is_peak</code> currently flags midnight and mid-morning, and misses the entire afternoon rush.</p>
+    <p>Worse, the serving path computes its hour from <code>now + LOCAL_OFFSET</code> (−7h) before calling the same <code>is_peak_hour()</code>. Training reads UTC, serving reads local: the two disagree by seven hours for the same bus. That is textbook training/serving skew, and it is exactly what <code>tests/test_feature_parity.py</code> exists to catch.</p>
+  </div>
+</section>
+
+<details>
+  <summary>Data table</summary>
+  <div class="scroll"><table id="tbl">
+    <thead><tr><th>Hour (local)</th><th>Arrivals</th><th>Mean delay (s)</th><th>P90 delay (s)</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</details>
+
+</div>
+
+<script>
+// hour_of_day in the source is UTC; h is the Vancouver-local equivalent (UTC-7).
+const HOURS = [
+  {h:17,n:65421,avg:59.4,p90:374},{h:18,n:41366,avg:86.3,p90:347},
+  {h:19,n:32288,avg:117.3,p90:410},{h:20,n:26421,avg:71.4,p90:283},
+  {h:21,n:22800,avg:93.8,p90:309},{h:22,n:19212,avg:83.0,p90:330},
+  {h:23,n:16444,avg:60.9,p90:245},{h:0,n:12390,avg:36.6,p90:227},
+  {h:1,n:7756,avg:63.1,p90:237},{h:2,n:3668,avg:68.6,p90:250},
+  {h:3,n:1805,avg:110.1,p90:311},{h:4,n:3985,avg:31.3,p90:192},
+  {h:5,n:18888,avg:24.5,p90:162},{h:6,n:36968,avg:24.9,p90:172},
+  {h:7,n:42588,avg:17.3,p90:174},{h:8,n:41046,avg:29.0,p90:216},
+  {h:9,n:35431,avg:37.6,p90:241},{h:10,n:31337,avg:45.9,p90:236},
+  {h:11,n:30399,avg:40.7,p90:253},{h:12,n:29489,avg:45.6,p90:281},
+  {h:13,n:30725,avg:56.8,p90:297},{h:14,n:64045,avg:166.5,p90:611},
+  {h:15,n:76919,avg:63.3,p90:309},{h:16,n:83701,avg:86.5,p90:371}
+].sort((a,b)=>a.h-b.h);
+
+const DIST = [
+  {k:"early > 5 min", n:20259,  c:"early"},
+  {k:"early 1–5 min", n:155091, c:"early"},
+  {k:"within 1 min",  n:286340, c:"ontime"},
+  {k:"late 1–3 min",  n:161715, c:"late"},
+  {k:"late 3–5 min",  n:70452,  c:"late"},
+  {k:"late 5–10 min", n:56094,  c:"late"},
+  {k:"late > 10 min", n:25141,  c:"late"}
+];
+
+const fmt = n => n.toLocaleString("en-CA");
+const TOTAL = DIST.reduce((s,d)=>s+d.n,0);
+const NS = "http://www.w3.org/2000/svg";
+const el = (t,a={}) => { const e=document.createElementNS(NS,t);
+  for (const k in a) e.setAttribute(k,a[k]); return e; };
+
+// ---- distribution: horizontal bars, direct-labelled ----
+const maxN = Math.max(...DIST.map(d=>d.n));
+document.getElementById("dist").innerHTML = DIST.map(d => `
+  <div class="hbar">
+    <div class="lab">${d.k}</div>
+    <div class="track"><div class="fill" style="width:${(d.n/maxN*100).toFixed(1)}%;background:var(--${d.c})"
+      title="${d.k}: ${fmt(d.n)} arrivals"></div></div>
+    <div class="val">${(d.n/TOTAL*100).toFixed(1)}%</div>
+  </div>`).join("");
+
+// ---- shared plot geometry ----
+const L=46, R=712, T=14, B=214, W=R-L, slot=W/24;
+
+function axes(svg, ticks, unit) {
+  ticks.forEach(t => {
+    const y = B - t.f*(B-T);
+    svg.appendChild(el("line",{x1:L,x2:R,y1:y,y2:y,class:"gridline"}));
+    const lb = el("text",{x:L-8,y:y+3,"text-anchor":"end",class:"tick"});
+    lb.textContent = t.l; svg.appendChild(lb);
+  });
+  svg.appendChild(el("line",{x1:L,x2:R,y1:B,y2:B,class:"axisline"}));
+  for (let h=0;h<24;h+=3) {
+    const x = L + h*slot + slot/2;
+    const lb = el("text",{x,y:B+16,"text-anchor":"middle",class:"tick"});
+    lb.textContent = String(h).padStart(2,"0"); svg.appendChild(lb);
+  }
+  const ax = el("text",{x:L,y:B+34,class:"axlabel"});
+  ax.textContent = "hour of day · vancouver local"; svg.appendChild(ax);
+  const uy = el("text",{x:L-8,y:T-4,"text-anchor":"end",class:"axlabel"});
+  uy.textContent = unit; svg.appendChild(uy);
+}
+
+// ---- volume ----
+(() => {
+  const svg = document.getElementById("vol");
+  const max = 90000;
+  axes(svg, [{f:0,l:"0"},{f:1/3,l:"30k"},{f:2/3,l:"60k"},{f:1,l:"90k"}], "arrivals");
+  HOURS.forEach(d => {
+    const x = L + d.h*slot + slot/2, hgt = d.n/max*(B-T);
+    const bw = Math.min(18, slot-4);
+    const r = el("rect",{x:x-bw/2, y:B-hgt, width:bw, height:Math.max(hgt,1),
+                         rx:3, class:"bar"});
+    const t = el("title"); t.textContent = `${String(d.h).padStart(2,"0")}:00 — ${fmt(d.n)} arrivals`;
+    r.appendChild(t); svg.appendChild(r);
+  });
+})();
+
+// ---- delay: two lines, same unit ----
+(() => {
+  const svg = document.getElementById("delay");
+  const max = 650;
+  axes(svg, [{f:0,l:"0"},{f:200/max,l:"200"},{f:400/max,l:"400"},{f:600/max,l:"600"}], "seconds");
+  const path = key => HOURS.map((d,i) =>
+      `${i?"L":"M"}${(L+d.h*slot+slot/2).toFixed(1)},${(B-d[key]/max*(B-T)).toFixed(1)}`).join("");
+  [["p90","--s2"],["avg","--s1"]].forEach(([k,v]) => {
+    svg.appendChild(el("path",{d:path(k), fill:"none", stroke:`var(${v})`,
+      "stroke-width":2, "stroke-linejoin":"round", "stroke-linecap":"round"}));
+  });
+  HOURS.forEach(d => {
+    [["p90","--s2"],["avg","--s1"]].forEach(([k,v]) => {
+      const c = el("circle",{cx:L+d.h*slot+slot/2, cy:B-d[k]/max*(B-T), r:4,
+        fill:`var(${v})`, stroke:"var(--surface)", "stroke-width":2});
+      const t = el("title");
+      t.textContent = `${String(d.h).padStart(2,"0")}:00 — ${k==="avg"?"mean":"p90"} ${d[k]}s`;
+      c.appendChild(t); svg.appendChild(c);
+    });
+  });
+  // direct label on the 14:00 spike, the point the prose calls out
+  const sp = HOURS.find(d=>d.h===14);
+  const lb = el("text",{x:L+14*slot+slot/2+9, y:B-sp.p90/max*(B-T)+4,
+    class:"tick", fill:"var(--ink-2)"});
+  lb.textContent = "611s"; svg.appendChild(lb);
+})();
+
+// ---- table ----
+document.querySelector("#tbl tbody").innerHTML = HOURS.map(d =>
+  `<tr><td>${String(d.h).padStart(2,"0")}:00</td><td>${fmt(d.n)}</td>
+   <td>${d.avg}</td><td>${d.p90}</td></tr>`).join("");
+</script>

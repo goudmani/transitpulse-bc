@@ -45,19 +45,35 @@ recoverable data issues or silently promote bad data on a retry.
 
 Decisions and their trade-offs are recorded in `docs/adr/`.
 
-STATUS: 
-```bash
-aws stepfunctions list-executions --state-machine-arn $SM \
---query "executions[0].{Status:status,Name:name}" --output table
-```
+## What the data looks like
 
------------------------------------------------------
-|                  ListExecutions                   |
-+----------------------------------------+----------+
-|                  Name                  | Status   |
-+----------------------------------------+----------+
-|  c2e37e90-6814-49f0-bc36-281a2dfc78a1  |  RUNNING |
-+----------------------------------------+----------+
+775,092 stop arrivals collapsed from 16.7 million raw predictions, over the first
+two days of collection. Regenerate with `python scripts/plot_profile.py`.
+
+![Arrival delay distribution: 40% late, 37% on time, 23% early](img/delay_distribution.png)
+
+Buses run late more often than early, but the distribution is wide in both
+directions — 23% of arrivals are more than a minute *ahead* of schedule. That is
+why the model predicts signed delay rather than lateness, and why `clamp_delay()`
+has a floor of −1800 seconds rather than zero.
+
+![Hourly service volume and delay profile](img/hourly_profile.png)
+
+The 46× swing in arrivals between 3am and the afternoon peak is the feed
+reflecting how many buses are actually on the road. The second panel is the
+interesting one: **volume and delay do not move together.** The busiest hours are
+not the worst ones, and the quietest hour of the night carries a higher mean delay
+than the morning rush.
+
+Volume and delay are plotted on separate stacked axes rather than a shared one —
+a dual-axis chart lets you imply any correlation you like by sliding the scales.
+
+> **This chart found a bug.** `hour_of_day` is derived from `observed_arrival_ts`,
+> which is UTC, but `PEAK_HOURS = {7, 8, 15, 16, 17}` was written for local hours —
+> midnight, 1am, and mid-morning in Vancouver. Meanwhile the serving path computes
+> its hour from `now + LOCAL_OFFSET` before calling the same `is_peak_hour()`.
+> Training reads UTC, serving reads local: seven hours apart for the same bus.
+> Textbook training/serving skew, caught by plotting the data rather than by a test.
 
 ## Repository layout
 
