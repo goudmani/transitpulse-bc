@@ -49,16 +49,24 @@ have been active for a day. Harmless.
 
 ## 3. Did last night's ETL run?
 
-The state machine fires at **02:20 UTC** (19:20 PDT the previous evening).
+This is **check 6 of `make check`** — no separate command needed. The state
+machine fires at **02:20 UTC** (19:20 PDT the previous evening), so a healthy
+morning shows a new `SUCCEEDED` execution dated today.
+
+**A missing execution is worse than a failed one** — failure alerts you by email,
+absence is silent. Three weeks of that leaves a hole in the training data you
+cannot fill, because bronze expires at 30 days.
+
+To re-run a day the scheduler missed:
 
 ```bash
 SM=$(terraform -chdir=infra output -raw state_machine_arn)
-aws stepfunctions list-executions --state-machine-arn $SM --max-items 3 \
-  --query "executions[].{Status:status,Started:startDate}" --output table
+aws stepfunctions start-execution --state-machine-arn $SM \
+  --input '{"run_date":"2026-08-15"}'
 ```
 
-Want a new `SUCCEEDED` execution each day. **A missing execution is worse than a
-failed one** — failure alerts you, absence doesn't.
+An explicit `YYYY-MM-DD` processes exactly that day. The scheduler passes a full
+ISO timestamp instead, which `resolve_run_date()` shifts back to the previous day.
 
 ---
 
