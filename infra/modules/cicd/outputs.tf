@@ -6,3 +6,8 @@ output "deploy_role_arn" {
 output "oidc_provider_arn" {
   value = local.enabled == 1 ? aws_iam_openid_connect_provider.github[0].arn : ""
 }
+
+output "agent_role_arn" {
+  value       = local.enabled == 1 ? aws_iam_role.agent[0].arn : ""
+  description = "Read-only role for the daily ops agent. Store as the AGENT_ROLE_ARN repo secret."
+}

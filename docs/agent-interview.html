@@ -1,0 +1,790 @@
+<title>Defending the Agent</title>
+<style>
+  :root {
+    --paper: #F2F4F5;
+    --surface: #FFFFFF;
+    --surface-2: #E7ECEE;
+    --ink: #111A21;
+    --ink-2: #3F525F;
+    --ink-3: #6C7F8B;
+    --rule: #D2DADE;
+    --rule-soft: #E3E9EB;
+    --accent: #0E4F5F;
+    --accent-2: #1B7F95;
+    --copper: #9E4A22;
+    --copper-bg: #F7ECE5;
+    --crit: #8C2B33;
+    --warn: #7F5309;
+    --ok: #1F5B43;
+    --shadow: 0 1px 2px rgba(17, 26, 33, .06), 0 8px 24px -16px rgba(17, 26, 33, .28);
+
+    --display: "Avenir Next", Avenir, Futura, "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
+    --body: Charter, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0C1317;
+      --surface: #121C22;
+      --surface-2: #19252C;
+      --ink: #E1E9ED;
+      --ink-2: #A2B3BD;
+      --ink-3: #788B96;
+      --rule: #24323A;
+      --rule-soft: #1B272E;
+      --accent: #5CB8CC;
+      --accent-2: #86D3E2;
+      --copper: #DB8E63;
+      --copper-bg: #231913;
+      --crit: #E2848D;
+      --warn: #D6A648;
+      --ok: #68B894;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #0C1317;
+    --surface: #121C22;
+    --surface-2: #19252C;
+    --ink: #E1E9ED;
+    --ink-2: #A2B3BD;
+    --ink-3: #788B96;
+    --rule: #24323A;
+    --rule-soft: #1B272E;
+    --accent: #5CB8CC;
+    --accent-2: #86D3E2;
+    --copper: #DB8E63;
+    --copper-bg: #231913;
+    --crit: #E2848D;
+    --warn: #D6A648;
+    --ok: #68B894;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 0 28px 96px;
+    display: grid;
+    grid-template-columns: 216px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+  }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    grid-column: 1 / -1;
+    padding: 72px 0 34px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .eyebrow {
+    font-family: var(--display);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .17em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 20px;
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(2.6rem, 6vw, 4.15rem);
+    font-weight: 600;
+    letter-spacing: -.028em;
+    line-height: .98;
+    margin: 0 0 22px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 1.2rem;
+    line-height: 1.5;
+    color: var(--ink-2);
+    max-width: 44ch;
+    margin: 0 0 30px;
+  }
+
+  .meta {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+  }
+
+  /* ---------- rail ---------- */
+
+  nav.rail {
+    position: sticky;
+    top: 34px;
+    font-family: var(--display);
+    padding-top: 46px;
+  }
+
+  nav.rail p {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 14px;
+  }
+
+  nav.rail ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    counter-reset: rail;
+  }
+
+  nav.rail a {
+    display: flex;
+    gap: 10px;
+    font-size: 13.5px;
+    line-height: 1.35;
+    color: var(--ink-2);
+    text-decoration: none;
+    padding: 6px 8px 6px 0;
+    border-radius: 3px;
+  }
+
+  nav.rail a::before {
+    counter-increment: rail;
+    content: counter(rail, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-3);
+    padding-top: 2px;
+    flex: none;
+  }
+
+  nav.rail a:hover { color: var(--accent); }
+  nav.rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- sections ---------- */
+
+  main { min-width: 0; padding-top: 46px; }
+
+  section { margin: 0 0 68px; scroll-margin-top: 28px; }
+
+  h2 {
+    font-family: var(--display);
+    font-size: 1.72rem;
+    font-weight: 600;
+    letter-spacing: -.016em;
+    margin: 0 0 8px;
+    text-wrap: balance;
+  }
+
+  .section-note {
+    font-size: 1.02rem;
+    color: var(--ink-2);
+    margin: 0 0 34px;
+    max-width: 64ch;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* ---------- question cards ---------- */
+
+  article.q {
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    border-radius: 4px;
+    box-shadow: var(--shadow);
+    padding: 26px 28px;
+    margin: 0 0 20px;
+  }
+
+  h3 {
+    font-family: var(--display);
+    font-size: 1.14rem;
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -.008em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+
+  .testing {
+    font-family: var(--display);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    background: var(--surface-2);
+    border-left: 2px solid var(--accent);
+    padding: 9px 13px;
+    margin: 0 0 18px;
+    border-radius: 0 3px 3px 0;
+  }
+
+  .testing b {
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 3px;
+  }
+
+  article.q > p { margin: 0 0 14px; max-width: 68ch; }
+  article.q > p:last-child { margin-bottom: 0; }
+
+  ul, ol.steps {
+    margin: 0 0 15px;
+    padding-left: 21px;
+    max-width: 68ch;
+  }
+
+  li { margin-bottom: 7px; }
+  li:last-child { margin-bottom: 0; }
+
+  strong { font-weight: 600; }
+
+  code {
+    font-family: var(--mono);
+    font-size: .855em;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--accent);
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.62;
+    background: var(--surface-2);
+    border: 1px solid var(--rule-soft);
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin: 0 0 15px;
+    overflow-x: auto;
+  }
+
+  pre code { background: none; padding: 0; color: var(--ink-2); }
+
+  /* ---------- callouts ---------- */
+
+  .trap, .edge {
+    border-radius: 0 3px 3px 0;
+    padding: 13px 16px;
+    margin: 18px 0 0;
+    font-size: 15.5px;
+    line-height: 1.55;
+    max-width: 68ch;
+  }
+
+  .trap { background: var(--copper-bg); border-left: 3px solid var(--copper); }
+  .edge { background: var(--surface-2); border-left: 3px solid var(--accent-2); }
+
+  .trap b, .edge b {
+    font-family: var(--display);
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .trap b { color: var(--copper); }
+  .edge b { color: var(--accent); }
+
+  .trap p, .edge p { margin: 0; }
+
+  /* ---------- table ---------- */
+
+  .scroller { overflow-x: auto; margin: 0 0 15px; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 9px 14px 9px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+
+  th {
+    font-family: var(--display);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+
+  td.num { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+
+  /* ---------- weak points ---------- */
+
+  .weak {
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    border-left: 3px solid var(--crit);
+    border-radius: 0 4px 4px 0;
+    padding: 20px 24px;
+    margin: 0 0 14px;
+    box-shadow: var(--shadow);
+  }
+
+  .weak h4 {
+    font-family: var(--display);
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 7px;
+  }
+
+  .weak p { margin: 0; font-size: 15.5px; color: var(--ink-2); max-width: 68ch; }
+
+  footer {
+    grid-column: 1 / -1;
+    border-top: 2px solid var(--ink);
+    padding-top: 22px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    line-height: 1.7;
+  }
+
+  a { color: var(--accent); }
+
+  @media (max-width: 880px) {
+    .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 20px 72px; }
+    nav.rail { position: static; padding-top: 34px; }
+    nav.rail ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 16px; }
+    main { padding-top: 34px; }
+    header.masthead { padding-top: 48px; }
+    body { font-size: 16.5px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">TransitPulse BC · Agent engineering</p>
+    <h1>Defending the Agent</h1>
+    <p class="standfirst">The questions an interviewer will ask about the daily ops agent, and the answers your own design decisions already support.</p>
+    <div class="meta">
+      <span>LangChain 1.3 · Groq · LangSmith</span>
+      <span>5 agents · 18 tools</span>
+      <span>~$0.70/day pipeline</span>
+    </div>
+  </header>
+
+  <nav class="rail">
+    <p>Topics</p>
+    <ol>
+      <li><a href="#rate">Rate limiting</a></li>
+      <li><a href="#memory">Memory &amp; context</a></li>
+      <li><a href="#tools">Tool calling</a></li>
+      <li><a href="#halluc">Hallucination</a></li>
+      <li><a href="#multi">Multi-agent design</a></li>
+      <li><a href="#prod">Production &amp; security</a></li>
+      <li><a href="#weak">Your weak points</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <!-- ============ RATE LIMITING ============ -->
+    <section id="rate">
+      <h2>Rate limiting</h2>
+      <p class="section-note">The most common shallow answer is "add retries." The distinction that separates candidates is knowing that pacing, retrying, and budgeting are three different problems with three different solutions.</p>
+
+      <article class="q">
+        <h3>Your agent calls a rate-limited LLM API. How do you handle it?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you know that retrying and pacing are not the same control.</div>
+        <p>Three layers, and they solve different failures:</p>
+        <ul>
+          <li><strong>Pacing (proactive).</strong> Don't send faster than the budget in the first place. A token bucket smooths request arrival. Ours is <code>InMemoryRateLimiter(requests_per_second=0.25)</code>.</li>
+          <li><strong>Retry (reactive).</strong> When a 429 comes back anyway, honour <code>Retry-After</code> and back off exponentially with jitter. <code>max_retries=4</code> on the ChatGroq client.</li>
+          <li><strong>Budget (hard ceiling).</strong> A tokens-per-<em>day</em> quota is not a rate — it's a finite allowance. No amount of pacing saves you once it's gone; you have to degrade.</li>
+        </ul>
+        <div class="trap"><b>The trap</b><p>"I'd add retries with exponential backoff" alone. Under <em>sustained</em> overload, retries make it worse: every client retries at once, latency compounds, and you burn quota on requests that were always going to fail. Retries handle transient spikes. Pacing handles steady-state load.</p></div>
+      </article>
+
+      <article class="q">
+        <h3>RPM or TPM — which one binds first in an agent?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you understand why agent loops are expensive in a way single-shot calls are not.</div>
+        <p>Tokens per minute, almost always — and the reason is structural. An agent resends the <em>entire conversation</em> on every turn, including all prior tool output. Turn <em>k</em> costs roughly <em>k</em> units, so <em>n</em> turns cost O(n²) tokens while costing only <em>n</em> requests.</p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Groq free tier</th><th>Limit</th><th>What we actually use</th></tr></thead>
+            <tbody>
+              <tr><td>Requests / min</td><td class="num">30</td><td>Nowhere near it — ~15 requests/run</td></tr>
+              <tr><td>Tokens / min</td><td class="num">12,000</td><td>The binding constraint</td></tr>
+              <tr><td>Tokens / day</td><td class="num">100,000</td><td>A run is ~40–70K, so ~1.5 runs/day</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Divide it out: 30 RPM against 12K TPM allows an average of 400 tokens per request. A single agent turn carrying four tool results is far past that. The entire design is shaped by TPM and TPD; RPM never mattered.</p>
+      </article>
+
+      <article class="q">
+        <h3>Where do you put the rate limiter?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you've actually run a multi-agent system, or only read about one.</div>
+        <p>On a <strong>shared</strong> model client, not one per agent. LangChain's <code>InMemoryRateLimiter</code> paces per <em>instance</em> — give each of four subagents its own <code>ChatGroq</code> and you've quietly quadrupled your real rate while believing you're limited.</p>
+        <pre><code>_SHARED: ChatGroq | None = None
+
+def shared_llm() -> ChatGroq:
+    """Process-wide singleton, so all agents share one bucket."""
+    global _SHARED
+    if _SHARED is None:
+        _SHARED = build_llm()
+    return _SHARED</code></pre>
+        <div class="edge"><b>Follow-up they will ask</b><p>"What breaks this?" — Horizontal scale. An in-memory bucket is per-process, so two workers means two buckets. Distributed rate limiting needs shared state: a Redis token bucket, or a proxy/gateway that owns the quota for everyone.</p></div>
+      </article>
+
+      <article class="q">
+        <h3>Token bucket, fixed window, or sliding window?</h3>
+        <div class="testing"><b>What they're testing</b>Standard systems-design knowledge, applied rather than recited.</div>
+        <ul>
+          <li><strong>Fixed window</strong> — cheap, but allows a 2× burst across the boundary (all of minute 1's budget at :59, all of minute 2's at :01).</li>
+          <li><strong>Sliding log</strong> — accurate, but stores a timestamp per request.</li>
+          <li><strong>Token bucket</strong> — refills at a steady rate, allows a bounded burst up to bucket size. What LangChain implements. Ours uses <code>max_bucket_size=3</code>, so an agent that pauses to think can then fire three calls without being throttled.</li>
+          <li><strong>Leaky bucket</strong> — strict smoothing, no burst allowed at all.</li>
+        </ul>
+        <div class="trap"><b>The real limitation</b><p><code>InMemoryRateLimiter</code> is <em>time-based only</em> — it cannot see how many tokens a request carries, so a 10,000-token request and a 200-token request each consume exactly one bucket token. Against a TPM limit that's a blunt instrument. The actual defence is keeping payloads small at the source: our tools return formatted tables, not raw API responses. A raw <code>get_metric_data</code> reply is a few thousand tokens; the same information summarised is about thirty.</p></div>
+      </article>
+
+      <article class="q">
+        <h3>What happens when you run out of budget mid-run?</h3>
+        <div class="testing"><b>What they're testing</b>Graceful degradation — whether you designed for the bad day.</div>
+        <p>Degrade in this order, and never skip to the last one:</p>
+        <ol class="steps">
+          <li>Truncate tool output harder.</li>
+          <li>Lower <code>AGENT_MAX_STEPS</code>.</li>
+          <li>Switch model — <code>openai/gpt-oss-120b</code> has 200K TPD versus llama-3.3-70b's 100K.</li>
+          <li>Skip non-essential subagents.</li>
+          <li>Emit a <em>partial</em> report saying what didn't run.</li>
+        </ol>
+        <p>What you must never do is produce nothing. <code>run_subagent()</code> catches every exception and returns a degraded report, so a subagent that dies costs you one section — not the day's file. And a subagent that dies three days running becomes the finding.</p>
+      </article>
+    </section>
+
+    <!-- ============ MEMORY ============ -->
+    <section id="memory">
+      <h2>Memory &amp; context</h2>
+      <p class="section-note">Interviewers reach for "would you add a vector store?" Answer the question underneath it instead: what is the retrieval key, and does this system's data actually have a semantic one?</p>
+
+      <article class="q">
+        <h3>What kinds of memory does an agent have?</h3>
+        <div class="testing"><b>What they're testing</b>Vocabulary, then whether you can map it onto a real system.</div>
+        <ul>
+          <li><strong>Working / short-term</strong> — the message list inside one run. Bounded by the context window and, in practice, by cost long before that.</li>
+          <li><strong>Long-term / persistent</strong> — anything surviving between runs. Needs a store <em>and</em> a retrieval key, and the key is the hard part.</li>
+          <li><strong>Episodic</strong> (what happened), <strong>semantic</strong> (facts learned), <strong>procedural</strong> (how to do things — usually just the prompt).</li>
+        </ul>
+        <p>Ours has working memory only. That's a deliberate choice, not an oversight, and the next question is where you defend it.</p>
+      </article>
+
+      <article class="q">
+        <h3>Your agent has no memory between runs. Defend that.</h3>
+        <div class="testing"><b>What they're testing</b>Whether you can hold a position without being defensive, and concede a real cost.</div>
+        <p>Concede the cost first, because it's real and it's documented: a slow multi-week drift that never breaches a daily threshold on any single day is invisible to this agent. That's a genuine gap.</p>
+        <p>Then the defence:</p>
+        <ul>
+          <li><strong>The reports are the memory.</strong> <code>reports/*.md</code> is durable, human-readable, git-versioned and diffable. That is a better substrate for ops history than an embedding index, because a human can read it.</li>
+          <li><strong>Ops data is a time series, so the retrieval key is time, not similarity.</strong> Semantic search over "cost was high on Tuesday" is the wrong tool for a question that is literally an ordered scan.</li>
+          <li><strong>Therefore the right fix is deterministic:</strong> parse the last 7 reports' <code>facts</code> lists into a compact table and put it in the prompt. No embeddings, no retrieval failure modes, no new infrastructure.</li>
+        </ul>
+        <div class="edge"><b>Why this answer lands</b><p>It names the limitation before they do, explains the reasoning, and specifies the fix — while explaining why the fix they were fishing for (a vector store) would be the wrong one. That's a stronger signal than having built it.</p></div>
+      </article>
+
+      <article class="q">
+        <h3>How do you manage a context window that keeps growing?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you know the options and their failure modes, not just their names.</div>
+        <ul>
+          <li><strong>Trimming</strong> — keep the system prompt and the last <em>k</em> messages. Simple, and loses the middle.</li>
+          <li><strong>Summarisation / compaction</strong> — compress old turns with a model call. The loss is <em>silent</em>, which is what makes it dangerous.</li>
+          <li><strong>Truncate at the source</strong> — cap tool output before it ever enters the transcript. Cheapest and most predictable; this is what we do.</li>
+          <li><strong>Context isolation</strong> — give each subagent its own clean window. This is multi-agent architecture's most underrated benefit: our cost agent never pays for the infrastructure agent's CloudWatch dumps.</li>
+        </ul>
+      </article>
+
+      <article class="q">
+        <h3>Would you add a LangGraph checkpointer?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you add machinery reflexively or ask what it buys.</div>
+        <p>Answer the question with a question: what would I do with the checkpoint? Checkpointers buy two things — resumption after failure, and human-in-the-loop interrupt/resume. Resumption only matters when re-running is expensive.</p>
+        <p>This run takes five minutes and costs approximately nothing, and a daily batch job that either completes or re-runs from scratch is idempotent by construction. A checkpointer would add state to restore without adding capability.</p>
+        <div class="edge"><b>When the answer flips</b><p>A long-running agent, an expensive tool with side effects partway through, or anything with a human approval step in the middle. Then <code>SqliteSaver</code> or a Postgres checkpointer keyed on <code>thread_id</code> earns its place immediately.</p></div>
+      </article>
+    </section>
+
+    <!-- ============ TOOL CALLING ============ -->
+    <section id="tools">
+      <h2>Tool calling</h2>
+      <p class="section-note">The mechanism is simple and worth being able to state precisely. The interesting decisions are all about what you put <em>in</em> a tool versus what you leave to the model.</p>
+
+      <article class="q">
+        <h3>How does tool calling actually work under the hood?</h3>
+        <div class="testing"><b>What they're testing</b>That you know the model never executes anything.</div>
+        <ol class="steps">
+          <li>Tool schemas — name, description, JSON Schema parameters — are serialised into the request alongside the messages.</li>
+          <li>The model emits a structured <code>tool_call</code> block instead of text.</li>
+          <li><em>Your runtime</em> executes the function and appends the result as a tool message.</li>
+          <li>The model is called again with the extended transcript. Loop until it returns a final answer or hits the step limit.</li>
+        </ol>
+        <p>The implication people miss: the model selects a tool based on its <strong>description</strong>. Docstrings are prompt text, not documentation. Ours say when <em>not</em> to call — <code>read_error_logs</code> begins "Only call this after another tool has shown a non-zero error count," because it's the most token-expensive tool we have.</p>
+      </article>
+
+      <article class="q">
+        <h3>Why return errors as strings instead of raising?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you've debugged a real agent loop.</div>
+        <p>A raised exception kills the loop. A returned string is an <em>observation</em> the model can reason about and route around.</p>
+        <p>The refinement that matters more: distinguish error <em>categories</em>, because they mean different things about the world.</p>
+        <div class="scroller">
+          <table>
+            <thead><tr><th>Prefix</th><th>Means</th><th>Correct agent response</th></tr></thead>
+            <tbody>
+              <tr><td class="num">TOOL_UNAVAILABLE</td><td>IAM denied the call</td><td>Info finding about the agent's own role</td></tr>
+              <tr><td class="num">TOOL_ERROR</td><td>The AWS call failed</td><td>Note it, try another route</td></tr>
+              <tr><td class="num">PROBLEM</td><td>The pipeline is genuinely broken</td><td>Critical or warning finding</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="trap"><b>Why the split earns its keep</b><p>Without it, a missing IAM permission gets reported as a production outage. That's a false critical — and once a human dismisses two of those, they stop reading the report, at which point the entire system is worse than nothing.</p></div>
+      </article>
+
+      <article class="q">
+        <h3>How many tools should one agent have?</h3>
+        <div class="testing"><b>What they're testing</b>Whether your multi-agent split had a reason behind it.</div>
+        <p>Selection accuracy degrades as the tool list grows; on mid-size models the practical ceiling for reliable selection is roughly five to ten. That is a concrete argument for splitting: four agents at four to seven tools each beats one agent at eighteen.</p>
+        <p>Ours: infrastructure 7, cost 3, data quality 4, code 4.</p>
+      </article>
+
+      <article class="q">
+        <h3>How do you stop a tool being abused?</h3>
+        <div class="testing"><b>What they're testing</b>Defence in depth versus a single clever guard.</div>
+        <p>Four layers, each assuming the ones above it failed:</p>
+        <ul>
+          <li><strong>Schema</strong> — parameter types constrain what can even be requested.</li>
+          <li><strong>Application</strong> — the Athena tool rejects anything that isn't <code>SELECT</code>/<code>WITH</code>, rejects semicolons, rejects DDL keywords.</li>
+          <li><strong>Filesystem</strong> — repo tools resolve paths and check <code>is_relative_to(REPO_ROOT)</code>, with a deny-list covering <code>.env</code>, <code>.git</code> and the 300KB guide.</li>
+          <li><strong>Infrastructure</strong> — a read-only IAM role carrying an explicit <code>Deny</code> on every mutating action.</li>
+        </ul>
+        <p>The IAM deny is the one that holds when everything above it has been talked around, which is exactly the scenario the next question is about.</p>
+      </article>
+
+      <article class="q">
+        <h3>Where is your prompt injection exposure?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you can find the attack surface in your own system. Most candidates say "we don't take user input" and stop.</div>
+        <p>We <em>do</em> take untrusted input — it just doesn't look like it. The agent reads <strong>CloudWatch log lines</strong>, and those logs contain data derived from an external GTFS feed. Any text that reaches the logs reaches the model's context. That is a genuine injection channel.</p>
+        <p>The honest position: you cannot reliably prevent injection with prompting. So you constrain the blast radius instead. This agent has no write capability of any kind, so a successful injection produces at worst a <em>wrong sentence in a report</em> — not a dropped table, not a disabled alarm, not a pushed commit.</p>
+        <div class="edge"><b>The line worth having ready</b><p>"An agent that cannot change anything is one you can afford to let be wrong." That single sentence is the justification for the whole read-only design, and it generalises well past this project.</p></div>
+      </article>
+    </section>
+
+    <!-- ============ HALLUCINATION ============ -->
+    <section id="halluc">
+      <h2>Hallucination</h2>
+      <p class="section-note">"How do you stop hallucination?" is a trick question. You don't. You make hallucination structurally unable to matter, and you make it checkable after the fact.</p>
+
+      <article class="q">
+        <h3>How do you stop the agent hallucinating?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you reach for a silver bullet or a layered answer.</div>
+        <p>Reframe it first: you can't eliminate it, so constrain what it can do. Seven layers, roughly in order of how much they buy:</p>
+        <ul>
+          <li><strong>Grounding.</strong> Every finding must quote a number from a tool. The prompt is blunt about it: "If you did not call a tool for it, it is not a finding."</li>
+          <li><strong>Determinism where it counts.</strong> Threshold comparisons and the month-end projection happen in Python. The prompt says <em>"quote its numbers; do not recompute the projection yourself, you will get it wrong."</em></li>
+          <li><strong>Structured output.</strong> A Pydantic schema via <code>ToolStrategy</code> means severity can't be a value outside the enum, and a finding can't arrive without a detail field.</li>
+          <li><strong>Priors in the prompt.</strong> Measured baselines — 16M rows/day, ~$0.70/day, one ETL run at 02:20 UTC. Without them a model grades a normal day against a generic prior and reports it as alarming.</li>
+          <li><strong>Verbatim carry-through.</strong> The supervisor copies findings rather than re-narrating them. A second model pass over the findings is a second opportunity to distort them.</li>
+          <li><strong>Blast radius.</strong> Read-only, as above.</li>
+          <li><strong>Auditability.</strong> The LangSmith trace lets a human walk any number in the report back to the tool call that produced it.</li>
+        </ul>
+      </article>
+
+      <article class="q">
+        <h3>Doesn't temperature 0 fix this?</h3>
+        <div class="testing"><b>What they're testing</b>A common misconception, stated confidently.</div>
+        <p>No. Temperature controls <em>variance</em>, not <em>accuracy</em>. A confidently wrong answer at temperature 0 is wrong reproducibly — arguably worse, since it looks stable. We run at 0.1 for consistent formatting, not for truthfulness.</p>
+      </article>
+
+      <article class="q">
+        <h3>Agents pad their output. How did you deal with that?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you've observed real model behaviour rather than assumed it.</div>
+        <p>Models treat an empty result as failing the task, so they manufacture findings to fill the list. Two fixes, and the second worked far better than the first:</p>
+        <ul>
+          <li><strong>Prompt:</strong> "An empty findings list with status healthy is the correct output on a good day and is what most days should produce."</li>
+          <li><strong>Structure:</strong> the code agent is handed <em>only</em> the critical and warning findings — never the full healthy reports. Given three clean reports in full, it reliably found something to "improve."</li>
+        </ul>
+        <div class="edge"><b>The generalisable insight</b><p>Changing the <em>input</em> changed behaviour more than changing the <em>instructions</em> did. Prompt engineering is weaker than context engineering: if a model keeps doing something you told it not to, stop rewording and look at what you're feeding it.</p></div>
+      </article>
+
+      <article class="q">
+        <h3>How do you evaluate an agent like this?</h3>
+        <div class="testing"><b>What they're testing</b>Whether "it seems to work" is your acceptance criterion.</div>
+        <ul>
+          <li><strong>Golden set from real incidents.</strong> This project has a gift here: twelve documented bugs and four cost overruns, with known-bad days. Replay those tool outputs as fixtures and assert the agent catches them.</li>
+          <li><strong>Regression on frozen outputs.</strong> Pin a day's tool responses, assert the findings don't drift when the prompt changes.</li>
+          <li><strong>Invariants, not exact text.</strong> Never assert on model prose. Assert "if dupes &gt; 0 then a critical finding exists."</li>
+          <li><strong>The deterministic layer, tested hard.</strong> <code>--tools-only</code> exercises every tool with no model at all. That's where the real bugs live.</li>
+          <li><strong>Production signal.</strong> False-positive rate. If a human dismisses findings without acting, the agent is noise regardless of what any offline eval says.</li>
+        </ul>
+      </article>
+
+      <article class="q">
+        <h3>Which failure mode worries you most?</h3>
+        <div class="testing"><b>What they're testing</b>Judgement about asymmetric costs.</div>
+        <p><strong>False negatives</strong>, by a wide margin. A false positive costs someone five minutes. A false negative means the pipeline was broken and the report said <em>healthy</em> — and now the report is actively worse than no report, because it manufactured confidence.</p>
+        <p>That asymmetry is written into the shared prompt: <em>"Absence of a signal is worse than a failure signal."</em> It's also why <code>check_schedules</code> exists — a paused EventBridge rule produces silence, not errors, so no error-based alarm will ever fire on it.</p>
+      </article>
+    </section>
+
+    <!-- ============ MULTI-AGENT ============ -->
+    <section id="multi">
+      <h2>Multi-agent design</h2>
+      <p class="section-note">Multi-agent is fashionable, which means the interviewer is checking whether you chose it or defaulted to it.</p>
+
+      <article class="q">
+        <h3>Why four agents instead of one agent with eighteen tools?</h3>
+        <div class="testing"><b>What they're testing</b>That the split solved a problem you can name.</div>
+        <ul>
+          <li>Tool selection accuracy degrades with tool count.</li>
+          <li>Context isolation — each subagent's window carries only its own tool output.</li>
+          <li>Independent failure — one agent dying costs one report section.</li>
+          <li>Different prompts encode genuinely different domain priors. "Normal" means something different to the cost agent than to the data quality agent.</li>
+        </ul>
+        <p>And name the cost, because it isn't free: token multiplication (each agent pays for its own system prompt) plus orchestration complexity.</p>
+      </article>
+
+      <article class="q">
+        <h3>Supervisor routing or a fixed sequence — and why?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you spend LLM calls on decisions you already know the answer to.</div>
+        <p>Fixed sequence. The three specialists are independent and answer different questions, so there is nothing for a router to decide — an LLM router there could only introduce error. The code agent runs last because it genuinely <em>depends</em> on the others' output, and a dependency is expressible in code.</p>
+        <p>The principle generalises: <strong>don't spend a model call on a decision that isn't uncertain.</strong></p>
+        <div class="edge"><b>When routing is right</b><p>When the branch depends on content you can't predict — open-ended user requests, variable task types, an unknown number of steps. A fixed nightly job is the opposite of that.</p></div>
+      </article>
+
+      <article class="q">
+        <h3>How do subagents communicate?</h3>
+        <div class="testing"><b>What they're testing</b>Interface design between non-deterministic components.</div>
+        <p>Structured Pydantic reports, not free text. Three reasons: the supervisor can count and sort findings without a model call; a schema costs a fraction of the tokens of a subagent narrating its work; and a contract fails loudly instead of silently.</p>
+        <p>Have the failure mode ready — the model sometimes answers in prose instead of calling the response tool, leaving <code>structured_response</code> as <code>None</code>. We keep the raw text, mark the report degraded, and carry on. Losing a run to a schema miss would be a worse outcome than an unstructured section.</p>
+      </article>
+    </section>
+
+    <!-- ============ PRODUCTION ============ -->
+    <section id="prod">
+      <h2>Production &amp; security</h2>
+      <p class="section-note">This is where a portfolio project either reads as a demo or as something that ran unattended and survived.</p>
+
+      <article class="q">
+        <h3>Why GitHub Actions rather than Lambda or ECS?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you weighed alternatives or picked the first thing that worked.</div>
+        <ul>
+          <li>LangChain is roughly 40MB of transitive dependencies — awkward against Lambda's packaging limits, and a container image adds a build pipeline.</li>
+          <li>The deliverable is a markdown file that belongs in the repo. Actions commits it natively; Lambda would need a separate path back to git.</li>
+          <li>The code agent needs to open pull requests. Actions has a token for that; Lambda doesn't.</li>
+          <li>The OIDC provider already existed in the <code>cicd</code> module.</li>
+          <li>Free.</li>
+        </ul>
+        <p>Name the trade-offs unprompted: scheduled runs are best-effort and GitHub delays them under load; scheduled workflows only fire from the <em>default branch</em>; and workflows are disabled after 60 days of repository inactivity — which this one solves incidentally by committing a report every day.</p>
+      </article>
+
+      <article class="q">
+        <h3>Walk me through least privilege here.</h3>
+        <div class="testing"><b>What they're testing</b>Whether "read-only" is a claim or a policy document.</div>
+        <ul>
+          <li>A <strong>separate role</strong> from the deploy role, which carries <code>PowerUserAccess</code>. Sharing it would have been one line of Terraform and a completely different risk profile.</li>
+          <li>Read-only grants, plus an explicit <code>Deny</code> statement covering every mutating action — so it holds even if someone later attaches a broader policy by mistake.</li>
+          <li>S3 scoped to project buckets. The <em>one</em> write in the whole policy is <code>s3:PutObject</code> on the Athena results prefix, because Athena cannot return a result without somewhere to write it.</li>
+          <li>OIDC federation — no long-lived access keys, one-hour sessions, trust policy scoped to a single repository.</li>
+        </ul>
+      </article>
+
+      <article class="q">
+        <h3>How do you know the agent actually ran?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you apply your own monitoring standards to your monitoring.</div>
+        <p>Per run: a LangSmith trace, a committed report, an Actions step summary, and step outputs carrying the critical count. A missing file in <code>reports/</code> is itself a signal.</p>
+        <p>Then concede the gap, because it's the same bug the agent hunts for in the ETL: <strong>nothing alerts when the workflow doesn't run at all.</strong> Failure alerts on failure, not on absence. The fix is a dead-man's-switch — a heartbeat that pages when it <em>stops</em> arriving.</p>
+        <div class="edge"><b>Why volunteering this helps</b><p>It shows you apply the principle consistently rather than only where it was convenient. "Absence is silent" is in the agent's own prompt; noticing it applies to the agent too is the point.</p></div>
+      </article>
+
+      <article class="q">
+        <h3>How do you test a non-deterministic system in CI?</h3>
+        <div class="testing"><b>What they're testing</b>Practical testing strategy under uncertainty.</div>
+        <p>Split the system at the determinism boundary and test each side differently. The tools are ordinary Python and deserve ordinary tests — mocked boto3, asserted output. That's where most bugs actually are. The model layer gets invariant assertions and frozen-fixture replay, never exact-text matching.</p>
+        <p><code>--tools-only</code> exists precisely for this: it runs every tool against real AWS with no model in the loop, which also makes it the fastest way to find a missing IAM permission without spending a single token.</p>
+      </article>
+
+      <article class="q">
+        <h3>What does the agent cost to run?</h3>
+        <div class="testing"><b>What they're testing</b>Whether you noticed the obvious trap in monitoring a cheap system.</div>
+        <p>Effectively zero: Groq free tier, Actions free on public repos at roughly five minutes a day, and AWS calls that are metric reads plus a handful of small Athena queries capped by the workgroup's byte limit.</p>
+        <p>State why that mattered: the pipeline being monitored costs <strong>$0.70/day</strong>. An observability layer costing more than the thing it observes is a bad trade, and on a project this size it would have been easy to build one.</p>
+      </article>
+    </section>
+
+    <!-- ============ WEAK POINTS ============ -->
+    <section id="weak">
+      <h2>Your weak points</h2>
+      <p class="section-note">Name these before the interviewer does. A candidate who volunteers the limitations of their own system reads as someone who has operated one; a candidate who defends everything reads as someone who hasn't.</p>
+
+      <div class="weak">
+        <h4>No cross-run memory</h4>
+        <p>A slow drift that never breaches a daily threshold is invisible. Fix is deterministic and cheap: load the last seven reports' facts into the prompt.</p>
+      </div>
+      <div class="weak">
+        <h4>Nothing alerts on the agent's own absence</h4>
+        <p>A workflow that never fires produces no failure. Needs a heartbeat that alerts on silence — exactly what the agent checks for in the ETL.</p>
+      </div>
+      <div class="weak">
+        <h4>Prompt baselines go stale</h4>
+        <p>The measured normals live in <code>_SHARED_CONTEXT</code>. Change the poll rate or add a feed and the agent grades against a world that no longer exists, silently.</p>
+      </div>
+      <div class="weak">
+        <h4>The code agent is the weakest component</h4>
+        <p>By construction — most of its proposals should be closed unreviewed. It cannot touch Terraform, IAM or the silver merge key at all. Worth saying plainly rather than overselling it.</p>
+      </div>
+      <div class="weak">
+        <h4>The token budget is tight</h4>
+        <p>~40–70K of a 100K daily allowance. A day with many findings, or a retry storm, could truncate the run. Mitigated by degradation, not eliminated.</p>
+      </div>
+      <div class="weak">
+        <h4>No staging environment for the agent itself</h4>
+        <p>Prompt changes go straight to the only environment there is. A frozen-fixture eval suite is the substitute, and it isn't built yet.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    TransitPulse BC · daily ops agent<br>
+    Source: agent/ · docs/agent.md · .github/workflows/agent-daily.yml<br>
+    LangChain 1.3.15 · langchain-groq 1.1.3 · llama-3.3-70b-versatile · LangSmith
+  </footer>
+
+</div>
