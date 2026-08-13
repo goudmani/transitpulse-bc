@@ -170,6 +170,13 @@ resource "aws_lambda_function" "online_features" {
 }
 
 resource "aws_lambda_event_source_mapping" "online_features" {
+  # Disabled during the data-collection window. This path exists only to serve
+  # live predictions -- nothing reads the DynamoDB table until Phase 7, while
+  # training data comes entirely from bronze -> silver -> gold. Left running it
+  # was the single largest line item on the bill (~$2.91/day, 49% of spend),
+  # writing state no one queried. Set back to true before deploying an endpoint.
+  enabled = false
+
   event_source_arn                   = aws_kinesis_stream.gtfs.arn
   function_name                      = aws_lambda_function.online_features.arn
   starting_position                  = "LATEST"

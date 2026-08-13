@@ -6,6 +6,11 @@ on:
     branches:
       - main
 
+# GITHUB_TOKEN defaults to read-only, so pushing a tag and creating a release
+# both 403 without this.
+permissions:
+  contents: write
+
 jobs:
   release:
     # Only run if PR was merged AND came from dev branch

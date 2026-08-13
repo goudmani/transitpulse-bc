@@ -38,3 +38,19 @@ aws ce get-cost-and-usage \
   --filter '{"Tags":{"Key":"Project","Values":["transitpulse"]}}' \
   --query "ResultsByTime[].Total.UnblendedCost.Amount" --output text 2>/dev/null \
   || echo "(cost data lags ~24h on new accounts)"
+
+# A missing execution is worse than a failed one: failure emails you, absence is
+# silent. Resolved by name rather than terraform output so this runs from
+# anywhere and does not need an initialised working directory.
+echo
+echo "=== 6. last night's ETL (want a new SUCCEEDED each day, ~02:20 UTC) ==="
+SM_ARN="$(aws stepfunctions list-state-machines --region "${REGION}" \
+  --query "stateMachines[?name=='transitpulse-etl'].stateMachineArn" \
+  --output text 2>/dev/null)"
+if [ -n "${SM_ARN}" ] && [ "${SM_ARN}" != "None" ]; then
+  aws stepfunctions list-executions --state-machine-arn "${SM_ARN}" \
+    --max-items 3 --region "${REGION}" \
+    --query "executions[].{Status:status,Started:startDate}" --output table
+else
+  echo "state machine 'transitpulse-etl' not found -- check the region"
+fi

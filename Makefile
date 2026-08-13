@@ -71,12 +71,16 @@ backfill: ## Backfill N days of ETL: make backfill DAYS=21
 check: ## Daily operational health check
 	./scripts/daily_check.sh
 
+.PHONY: data
+data: ## Daily data check: are we accumulating usable training days?
+	./scripts/data_check.sh
+
 .PHONY: pause
 pause: ## Stop ingestion (keeps everything else alive)
-	aws events disable-rule --name transitpulse-poll-1min --region $(REGION)
+	aws events disable-rule --name transitpulse-poll --region $(REGION)
 	@echo "ingestion paused"
 
 .PHONY: resume
 resume: ## Resume ingestion
-	aws events enable-rule --name transitpulse-poll-1min --region $(REGION)
+	aws events enable-rule --name transitpulse-poll --region $(REGION)
 	@echo "ingestion resumed"

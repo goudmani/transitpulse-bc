@@ -140,9 +140,18 @@ resource "aws_lambda_function" "poller" {
 }
 
 resource "aws_cloudwatch_event_rule" "poll" {
-  name                = "${var.name}-poll-1min"
-  description         = "Poll the GTFS-Realtime feed every minute"
-  schedule_expression = "rate(1 minute)"
+  name = "${var.name}-poll"
+
+  # Every 2 minutes, not every minute. Silver emits one row per *arrival*
+  # regardless of how often that arrival was re-predicted, so halving the poll
+  # rate halves Firehose, Kinesis, Lambda and S3 cost while producing the same
+  # number of training rows -- the collapse ratio just drops from ~25:1 to ~12:1.
+  #
+  # The only real cost is snapshot precision: snapshot_at(15) picks the
+  # prediction closest to 15 minutes before arrival, and the worst case is now
+  # ~2 minutes off that target instead of ~1.
+  description         = "Poll the GTFS-Realtime feed"
+  schedule_expression = "rate(2 minutes)"
   state               = "ENABLED"
 }
 
@@ -413,6 +422,25 @@ resource "aws_kinesis_firehose_delivery_stream" "bronze" {
 
     processing_configuration {
       enabled = true
+
+      # The poller packs ~100 newline-delimited rows into each Kinesis record so
+      # Firehose's 5 KB per-record billing minimum is amortised instead of paid
+      # 100 times over. This splits them apart again, and must run BEFORE the
+      # MetadataExtraction below -- that JQ query reads .record_type and expects
+      # exactly one JSON object per record.
+      processors {
+        type = "RecordDeAggregation"
+
+        parameters {
+          parameter_name  = "SubRecordType"
+          parameter_value = "DELIMITED"
+        }
+
+        parameters {
+          parameter_name  = "Delimiter"
+          parameter_value = base64encode("\n")
+        }
+      }
 
       processors {
         type = "MetadataExtraction"

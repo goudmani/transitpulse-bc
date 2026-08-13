@@ -58,16 +58,28 @@ FEEDS = {
 MAX_RECORDS_PER_PUT = 500  # Kinesis PutRecords hard limit
 HTTP_TIMEOUT = 15
 
-# One Kinesis shard accepts 1,000 records/sec. Left unpaced, a single poll fires
-# ~11,000 records in ~4.5s -- about 2,400/sec -- which throttled hard enough that
-# _flush() exhausted its retries, failed the invocation, and EventBridge re-ran
-# the whole poll (republishing everything that had already landed).
+# Firehose bills every record rounded UP to 5 KB, and a single flattened row is
+# ~200 bytes -- so one row per record meant paying for 25x the bytes actually
+# sent (57 GB/day billed against 2.3 GB real). Packing rows as newline-delimited
+# JSON amortises that minimum.
 #
-# The function has a 120s timeout and only needs a few seconds of real work, so
-# the cheapest fix is to spend some of that budget deliberately rather than pay
-# for a second shard. 900/sec leaves headroom under the limit.
-TARGET_RECORDS_PER_SEC = 900
-_MIN_BATCH_INTERVAL = MAX_RECORDS_PER_PUT / TARGET_RECORDS_PER_SEC
+# Firehose splits them apart again with a RecordDeAggregation processor before
+# its JQ partitioning query runs, so the S3 layout is unchanged.
+ROWS_PER_RECORD = 100
+
+# ~100 rows x ~200 bytes = ~20 KB per record. PutRecords caps a call at 5 MB, so
+# 200 packed records (~4 MB) keeps a margin.
+MAX_PACKED_PER_PUT = 200
+
+# A shard accepts 1,000 records/sec AND 1 MiB/sec. Unpacked, the record count
+# bound first: ~16,000 rows fired in 4.5s throttled hard enough that _flush()
+# exhausted its retries, failed the invocation, and EventBridge re-ran the whole
+# poll. Packed, record count stops mattering (~160 per poll) and bandwidth binds
+# instead -- so pace on bytes rather than records.
+#
+# The function has a 120s timeout and needs only a few seconds of real work, so
+# spending some of that budget deliberately is cheaper than a second shard.
+TARGET_BYTES_PER_SEC = 800_000
 
 _api_key_cache: str | None = None
 
@@ -172,37 +184,70 @@ def _flush(batch: list[dict[str, Any]], attempts: int = 4) -> int:
     raise RuntimeError(f"{len(pending)} records failed after {attempts} attempts")
 
 
-def _pace(last_send: float) -> float:
-    """Sleep only if the previous batch went out faster than the target rate.
+def _pace(last_send: float, last_bytes: int) -> float:
+    """Sleep only if the previous send exceeded the target byte rate.
 
-    Returns the timestamp of this send, to be passed back in on the next call.
+    Takes the timestamp and payload size of the previous send and returns the
+    timestamp of this one, to be passed back in on the next call. A send that
+    was already slower than the target never sleeps.
     """
     if last_send:
-        overdue = _MIN_BATCH_INTERVAL - (time.monotonic() - last_send)
-        if overdue > 0:
-            time.sleep(overdue)
+        owed = last_bytes / TARGET_BYTES_PER_SEC - (time.monotonic() - last_send)
+        if owed > 0:
+            time.sleep(owed)
     return time.monotonic()
 
 
+def pack(rows: list[str], key: str) -> dict[str, Any]:
+    """Wrap many JSON rows as one newline-delimited Kinesis record.
+
+    Firehose splits this back into individual rows via its RecordDeAggregation
+    processor, so the delimiter must stay a bare newline.
+    """
+    return {
+        "Data": ("\n".join(rows) + "\n").encode("utf-8"),
+        "PartitionKey": key,
+    }
+
+
 def publish(records: Iterator[dict[str, Any]]) -> int:
-    batch: list[dict[str, Any]] = []
-    sent = 0
-    last_send = 0.0
+    """Publish flattened rows to Kinesis, packed and byte-paced.
+
+    Returns the number of *rows* sent, not Kinesis records -- that is the figure
+    the ingest-stalled alarm watches.
+    """
+    packed: list[dict[str, Any]] = []
+    rows: list[str] = []
+    key = "unknown"
+    rows_sent = 0
+    last_send, last_bytes = 0.0, 0
+
+    def send() -> None:
+        nonlocal packed, last_send, last_bytes
+        payload = sum(len(rec["Data"]) for rec in packed)
+        last_send = _pace(last_send, last_bytes)
+        _flush(packed)
+        last_bytes = payload
+        packed = []
+
     for record in records:
-        batch.append(
-            {
-                "Data": (json.dumps(record) + "\n").encode("utf-8"),
-                "PartitionKey": partition_key(record),
-            }
-        )
-        if len(batch) == MAX_RECORDS_PER_PUT:
-            last_send = _pace(last_send)
-            sent += _flush(batch)
-            batch = []
-    if batch:
-        _pace(last_send)
-        sent += _flush(batch)
-    return sent
+        if not rows:
+            key = partition_key(record)
+        rows.append(json.dumps(record))
+        rows_sent += 1
+
+        if len(rows) == ROWS_PER_RECORD:
+            packed.append(pack(rows, key))
+            rows = []
+            if len(packed) == MAX_PACKED_PER_PUT:
+                send()
+
+    if rows:
+        packed.append(pack(rows, key))
+    if packed:
+        send()
+
+    return rows_sent
 
 
 FLATTENERS = {
