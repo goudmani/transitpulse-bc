@@ -9,15 +9,34 @@ schedule — all provisioned by Terraform and deployed through GitHub Actions.
 
 ## Results
 
+### Baselines — measured
+
+Over 775,092 stop arrivals, 2026-08-11 to 08-12. **Preliminary**: two days is one
+weekday and one partial day, with no weekend, no rain and no incident. Final
+figures come from `sql/04_baselines.sql` over the full training window.
+
 | Predictor | MAE (seconds) |
 |---|---|
-| Published schedule (predict 0 delay) |  |
-| Persistence (bus stays as late as it is) |  |
-| Historical median for route/stop/hour |  |
-| **XGBoost model** |  |
+| Published schedule (predict zero delay) | **156.2** |
+| Persistence (bus stays as late as it currently is) | **136.4** |
+| Historical median for route/stop/hour | pending — needs ≥5 days of history |
+| **XGBoost model** | pending — Phase 6 |
 
-Measured on a time-based hold-out split. Numbers are reproducible from the
-Iceberg snapshot recorded in the model registry.
+Persistence beats the printed timetable by 12.7%, which is the honest bar. "A bus
+four minutes late tends to stay four minutes late" is a hard baseline, and a model
+that only ties it is a real finding rather than a failure to hide.
+
+The registry gate is set at `mae_ratio_vs_persistence <= 0.92`, so a model must
+reach **≤ 125.5 seconds** to be registered at all. A gate that always passes is
+decoration.
+
+The historical-median baseline needs `hist_median_delay`, which requires ≥20
+observations per route/stop/day-type/hour cell from *strictly earlier* service
+dates. That is the leakage guard, and it means the feature is empty until roughly
+day five.
+
+All measured on a time-based hold-out split — never random. A random split leaks
+the future through the historical aggregates and makes every metric fraudulent.
 
 ## Architecture
 
@@ -94,9 +113,18 @@ a dual-axis chart lets you imply any correlation you like by sliding the scales.
 ```bash
 make lint test          # runs offline, no AWS needed
 ./scripts/bootstrap.sh  # one-time state backend
-make image              # build and push the poller container
+make package            # build the poller as an 868 KB zip -- no Docker
 make init plan apply
 ```
+
+The poller ships as a zip rather than a container. `pip --platform
+manylinux2014_x86_64` cross-builds Linux wheels from macOS, so the same command
+produces an identical package on Apple Silicon and Intel — 868 KB instead of a
+~600 MB image, and no Docker daemon. `make image` still exists if you set
+`poller_package_type = "Image"`.
+
+Day-to-day operation is in [`docs/daily-runbook.md`](docs/daily-runbook.md):
+`make check` for service health, `make data` for collection progress.
 
 ## Production considerations
 
@@ -113,15 +141,31 @@ make init plan apply
 
 ## Cost
 
-Roughly $30–45/month at ~16M events/day. See `docs/adr/003-no-nat-gateway.md`
-and `docs/adr/004-serverless-inference.md` for the two decisions that dominate
-that figure.
+**~$21/month at ~11.5M events/day**, measured rather than estimated. It did not
+start there — the first days ran at ~$4/day, and getting it down meant reading an
+itemised bill rather than trusting an architecture diagram.
+
+| Change | Why |
+|---|---|
+| Disabled the online-feature path until serving | Nothing reads DynamoDB during collection; training data comes entirely from S3. It was 49% of spend. |
+| Pack ~100 rows per Kinesis record | Firehose bills every record rounded up to **5 KB**, and rows are ~200 bytes — unpacked it billed 57 GB/day against 2.3 GB of real data. |
+| Poll every 2 min instead of 1 | Silver emits one row per *arrival* regardless of how often it was re-predicted, so this halves cost for the same number of training rows. |
+| Daily ETL instead of hourly | 72 → 3 Glue runs/day, for data a weekly retrain consumes. |
+| No NAT Gateway | Two free gateway VPC endpoints replace a ~$32/month appliance — [`adr/003`](docs/adr/003-no-nat-gateway.md). |
+| Serverless inference | ~$0 idle versus ~$96/month for the smallest always-on endpoint — [`adr/004`](docs/adr/004-serverless-inference.md). |
+
+The Kinesis shard is the only component that bills while idle, at ~$0.36/day.
+Everything else genuinely scales to zero.
 
 ## Known limitations
 
 - The SageMaker execution role uses `AmazonSageMakerFullAccess` for
   development. A production deployment would scope this down.
-- One Kinesis shard caps throughput at 1,000 records/sec; a second agency
-  would need a second shard.
+- One Kinesis shard caps writes at 1,000 records/sec. At ~16,000 rows per poll
+  the poller exceeded that, Kinesis throttled, invocations failed and polls were
+  lost to the DLQ. Resolved by pacing `PutRecords` batches to ~900/sec inside the
+  Lambda rather than provisioning a second shard — the function has a 120-second
+  timeout and was finishing in 4.5, so the capacity was already paid for. A second
+  agency would need a real second shard.
 - Iceberg small files will need periodic compaction beyond a few months of data.
 
