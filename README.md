@@ -2,7 +2,8 @@
 
 Real-time transit delay prediction on AWS: streaming GTFS-Realtime ingestion,
 an S3 lakehouse, and a deployed SageMaker model that beats the published
-schedule — all provisioned by Terraform and deployed through GitHub Actions.
+schedule — all provisioned by Terraform, deployed through GitHub Actions, and
+watched nightly by a read-only LLM agent that files its own operations report.
 
 > Transit data from TransLink, used under their Open API Terms of Use.
 > Weather data from Open-Meteo.
@@ -107,6 +108,8 @@ a dual-axis chart lets you imply any correlation you like by sliding the scales.
 | `sql/` | Athena DDL, baseline query, phase verification queries |
 | `tests/` | Unit tests plus the training/serving parity guard |
 | `scripts/` | Bootstrap, image build, backfill, daily health check |
+| `agent/` | Ops agent: supervisor, four subagents, 18 read-only tools |
+| `reports/` | One agent report per day, committed by the nightly workflow |
 
 ## Quick start
 
@@ -124,7 +127,8 @@ produces an identical package on Apple Silicon and Intel — 868 KB instead of a
 `poller_package_type = "Image"`.
 
 Day-to-day operation is in [`docs/daily-runbook.md`](docs/daily-runbook.md):
-`make check` for service health, `make data` for collection progress.
+`make check` for service health, `make data` for collection progress. Both are
+also run nightly, unattended, by [the ops agent](#the-ops-agent).
 
 ## Production considerations
 
@@ -157,6 +161,51 @@ itemised bill rather than trusting an architecture diagram.
 The Kinesis shard is the only component that bills while idle, at ~$0.36/day.
 Everything else genuinely scales to zero.
 
+## The ops agent
+
+A supervisor and four specialists run at 03:30 UTC, inspect the running pipeline
+and commit a report to [`reports/`](reports/). LangChain on Groq, traced in
+LangSmith, deployed as a scheduled GitHub Actions workflow — so it runs whether
+or not a laptop is open.
+
+| Agent | The question it answers |
+|---|---|
+| infrastructure | Is it running? Alarms, EventBridge rules, Kinesis/Firehose, Lambda + DLQ, Step Functions, Glue |
+| cost | Is it spending more than it should, and on what? |
+| data quality | Is the output usable for training? Collection progress, label rate, duplicates |
+| code | Does any of that trace to a defect in this repo? |
+| supervisor | Compiles the four and writes the report |
+
+The decision worth defending is that **the subagents do not compute anything.**
+Every number in a report came from a boto3 or Athena call, threshold comparisons
+and the month-end projection happen in Python, and the supervisor carries findings
+through verbatim — the only free prose is the two-sentence summary at the top. A
+model having an off day makes that summary bland; it cannot invent a cost figure
+or silently drop a critical finding.
+
+It is read-only by construction: a dedicated IAM role with an explicit `Deny` on
+every mutating action, an Athena tool that rejects anything but `SELECT`, and repo
+tools that cannot escape the working tree. That matters more than it first appears,
+because the agent reads CloudWatch logs — which carry data derived from an external
+feed and are therefore a real prompt-injection channel. Injection cannot be reliably
+prevented by prompting, so the blast radius is constrained instead: the code agent
+proposes patches as a **draft pull request** and is structurally unable to apply one.
+
+Each run is a single LangSmith trace — four subagents, every model call and every
+tool call nested under one root span, stamped with the git SHA and the thresholds
+in force. The report says what the agent concluded; the trace is how you check its
+working, and its URL is in the report footer.
+
+```bash
+make agent-tools   # exercise every tool against AWS -- no model, no tokens spent
+make agent         # full run, writes reports/<today>.md
+```
+
+Running it costs effectively nothing — Groq free tier, ~5 minutes a day of Actions
+minutes, and metric reads. That was a design constraint rather than a happy result:
+an observability layer costing more than the ~$0.70/day pipeline it watches is a bad
+trade. Details in [`docs/agent.md`](docs/agent.md).
+
 ## Known limitations
 
 - The SageMaker execution role uses `AmazonSageMakerFullAccess` for
@@ -168,4 +217,8 @@ Everything else genuinely scales to zero.
   timeout and was finishing in 4.5, so the capacity was already paid for. A second
   agency would need a real second shard.
 - Iceberg small files will need periodic compaction beyond a few months of data.
+- The ops agent has no memory between runs, so a slow drift that never breaches a
+  daily threshold is invisible to it. Worse, nothing alerts when the *workflow
+  itself* fails to fire — absence is silent, which is precisely the class of bug
+  the agent was written to catch in the ETL. A dead-man's-switch is the fix.
 

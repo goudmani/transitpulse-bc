@@ -75,6 +75,18 @@ check: ## Daily operational health check
 data: ## Daily data check: are we accumulating usable training days?
 	./scripts/data_check.sh
 
+.PHONY: agent-install
+agent-install: ## Install the ops agent's dependencies (LangChain, Groq)
+	pip install -r requirements-agent.txt
+
+.PHONY: agent-tools
+agent-tools: ## Smoke-test every agent tool against AWS, no LLM, no Groq tokens
+	python -m agent.supervisor --tools-only
+
+.PHONY: agent
+agent: ## Run the daily ops agent now and write reports/$(shell date -u +%Y-%m-%d).md
+	python -m agent.supervisor --verbose
+
 .PHONY: pause
 pause: ## Stop ingestion (keeps everything else alive)
 	aws events disable-rule --name transitpulse-poll --region $(REGION)
