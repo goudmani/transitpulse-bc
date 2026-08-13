@@ -43,8 +43,10 @@ __pycache__/
 htmlcov/
 
 # --- data / local scratch ---
+data/
 weather.parquet
 *.parquet
+*.csv
 tests/fixtures/offline_sample.json
 docs/interview-brief.html
 docs/portfolio-brief.md

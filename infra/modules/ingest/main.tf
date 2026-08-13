@@ -423,6 +423,25 @@ resource "aws_kinesis_firehose_delivery_stream" "bronze" {
     processing_configuration {
       enabled = true
 
+      # The poller packs ~100 newline-delimited rows into each Kinesis record so
+      # Firehose's 5 KB per-record billing minimum is amortised instead of paid
+      # 100 times over. This splits them apart again, and must run BEFORE the
+      # MetadataExtraction below -- that JQ query reads .record_type and expects
+      # exactly one JSON object per record.
+      processors {
+        type = "RecordDeAggregation"
+
+        parameters {
+          parameter_name  = "SubRecordType"
+          parameter_value = "DELIMITED"
+        }
+
+        parameters {
+          parameter_name  = "Delimiter"
+          parameter_value = base64encode("\n")
+        }
+      }
+
       processors {
         type = "MetadataExtraction"
 

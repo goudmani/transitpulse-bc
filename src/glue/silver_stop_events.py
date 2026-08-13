@@ -56,6 +56,13 @@ HORIZONS_MIN = (5, 15, 30)
 DELAY_FLOOR_SEC = -1800
 DELAY_CEILING_SEC = 7200
 
+# GTFS trip.schedule_relationship: 0 SCHEDULED, 1 ADDED, 2 UNSCHEDULED,
+# 3 CANCELED, 5 DUPLICATED. Cancelled trips are ~3% of the feed and never
+# arrive, so whatever arrival_delay was last published for them is fiction --
+# the bus is not late, it is absent. Training on them teaches the model from
+# labels that describe nothing.
+SCHEDULE_CANCELED = 3
+
 
 def read_trip_updates() -> DataFrame:
     """Read one day of bronze straight from S3, not through the Data Catalog.
@@ -75,6 +82,10 @@ def read_trip_updates() -> DataFrame:
         .where(F.col("trip_id").isNotNull())
         .where(F.col("stop_id").isNotNull())
         .where(F.col("start_date").isNotNull())
+        # coalesce, not a bare !=: comparing NULL yields NULL, and Spark drops
+        # NULL rows from a where(), so any record missing the field would
+        # silently disappear. Treat a missing value as SCHEDULED.
+        .where(F.coalesce(F.col("schedule_relationship"), F.lit(0)) != SCHEDULE_CANCELED)
     )
 
 
@@ -133,9 +144,24 @@ def join_dimensions(events: DataFrame) -> DataFrame:
         F.col("route_short_name"),
         F.col("route_type").cast("int").alias("route_type"),
     )
+    # The realtime feed omits route_id on ~1% of otherwise-scheduled trips while
+    # still sending trip_id, which left those rows with no route_type, no
+    # route_short_name, and no historical priors downstream (gold groups those
+    # by route_id). The static schedule knows the mapping, so recover it.
+    # dropDuplicates guards the join against a non-unique trip_id in trips.txt,
+    # which would otherwise fan rows out.
+    trips = (
+        SPARK.table(f"{BRONZE_DB}.dim_trips")
+        .select(F.col("trip_id"), F.col("route_id").alias("sched_route_id"))
+        .dropDuplicates(["trip_id"])
+    )
     return (
         events.join(stop_times, on=["trip_id", "stop_id"], how="left")
         .join(stops, on="stop_id", how="left")
+        # Must precede the routes join, or the recovered id arrives too late.
+        .join(trips, on="trip_id", how="left")
+        .withColumn("route_id", F.coalesce(F.col("route_id"), F.col("sched_route_id")))
+        .drop("sched_route_id")
         .join(routes, on="route_id", how="left")
     )
 
