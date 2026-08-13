@@ -1,0 +1,162 @@
+name: Daily Ops Agent
+
+# 03:30 UTC, an hour and ten minutes after the 02:20 ETL kicks off. That gap is
+# deliberate: running before the ETL finishes would report every day as "no ETL
+# execution found" and the agent would cry wolf every single morning.
+#
+# Scheduled workflows only ever run from the DEFAULT branch, so this file has to
+# be merged to main before the cron will fire. On dev it will only run manually.
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      fail_on_critical:
+        description: "Exit non-zero if a critical finding is found"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # commit the report back to reports/
+  pull-requests: write # open a draft PR when the code agent proposes a patch
+  id-token: write # exchange the workflow token for AWS creds via OIDC
+
+# A run that overruns its schedule must not collide with the next one -- two
+# agents writing the same reports/<date>.md would race on the commit.
+concurrency:
+  group: daily-ops-agent
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-agent.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-agent.txt
+
+      # Read-only role, deliberately not the PowerUserAccess deploy role used by
+      # the Terraform workflow. The agent inspects; it never changes anything.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AGENT_ROLE_ARN }}
+          aws-region: ca-central-1
+          role-session-name: transitpulse-daily-agent
+
+      - name: Run the agent
+        id: agent
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Tracing degrades gracefully: with no LANGSMITH_API_KEY secret the
+          # agent turns tracing off and runs exactly as before, so a missing or
+          # expired key never fails the nightly run.
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          LANGSMITH_TRACING: "true"
+          LANGSMITH_PROJECT: transitpulse-ops-agent
+          # Only needed on the EU instance; harmless to leave unset otherwise.
+          LANGSMITH_ENDPOINT: ${{ vars.LANGSMITH_ENDPOINT }}
+          AWS_REGION: ca-central-1
+          DAILY_COST_THRESHOLD: "1.50"
+          MONTHLY_COST_THRESHOLD: "45.00"
+          TARGET_COLLECTION_DAYS: "21"
+          # Flip to true once the Project tag is activated under
+          # Billing -> Cost allocation tags. Until then a tag filter returns $0.
+          COST_FILTER_BY_TAG: "false"
+        run: python -m agent.supervisor --verbose
+
+      # The report is committed even when findings are critical -- especially
+      # then. A day with no report in reports/ is indistinguishable from a day
+      # the pipeline was fine, which is the failure mode this whole thing exists
+      # to avoid.
+      - name: Commit the report
+        run: |
+          git config user.name  "transitpulse-agent[bot]"
+          git config user.email "transitpulse-agent[bot]@users.noreply.github.com"
+          git add reports/
+          if git diff --staged --quiet; then
+            echo "no report changes to commit"
+          else
+            git commit -m "report: daily ops check ${{ github.run_id }} (${{ steps.agent.outputs.status }})"
+            # Rebase rather than force: a human may have pushed while this ran,
+            # and the report is never the more important of the two changes.
+            git pull --rebase origin ${{ github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      # Patches are opened as a DRAFT pull request on their own branch. They are
+      # never pushed to the default branch and never auto-merged: this agent
+      # proposes code changes, a human decides.
+      #
+      # The branch prefix matters -- auto-release.yml only fires on merges whose
+      # head ref is exactly 'dev', so an agent branch cannot cut a release.
+      - name: Open a draft PR for proposed patches
+        if: steps.agent.outputs.has_patches == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="agent/patches-$(date -u +%Y-%m-%d)-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
+
+          applied=0
+          for patch in reports/patches/$(date -u +%Y-%m-%d)-*.patch; do
+            [ -e "$patch" ] || continue
+            # --check first: a diff written against a file the model misread will
+            # not apply, and a half-applied patch is worse than a skipped one.
+            if git apply --check "$patch" 2>/dev/null; then
+              git apply "$patch" && applied=$((applied + 1))
+              echo "applied $patch"
+            else
+              echo "SKIPPED (does not apply cleanly): $patch"
+            fi
+          done
+
+          if [ "$applied" -eq 0 ]; then
+            echo "no patches applied cleanly; the proposals are in the report instead"
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "agent: $applied proposed fix(es) from the $(date -u +%Y-%m-%d) run"
+          git push origin "$BRANCH"
+
+          # Heredoc rather than a multi-line --body argument: an unindented
+          # continuation line inside a `run: |` block terminates the YAML block
+          # scalar and breaks the whole workflow file.
+          cat > /tmp/pr-body.md <<'EOF'
+          Opened automatically by the daily ops agent.
+
+          **Every change here is a proposal and none of it has been reviewed.**
+
+          Read the report first, then this diff. Close the PR if the diagnosis is
+          wrong -- that is the expected outcome most of the time.
+          EOF
+          {
+            echo ""
+            echo "- Report: \`${{ steps.agent.outputs.report_path }}\`"
+            echo "- Trace: ${{ steps.agent.outputs.trace_url }}"
+          } >> /tmp/pr-body.md
+
+          gh pr create \
+            --draft \
+            --base "${{ github.ref_name }}" \
+            --head "$BRANCH" \
+            --title "agent: proposed fixes from $(date -u +%Y-%m-%d)" \
+            --body-file /tmp/pr-body.md
+
+      - name: Flag critical findings
+        if: steps.agent.outputs.critical != '0'
+        run: |
+          echo "::warning title=TransitPulse::${{ steps.agent.outputs.critical }} critical finding(s) — see ${{ steps.agent.outputs.report_path }}"
+          if [ "${{ inputs.fail_on_critical }}" = "true" ]; then exit 1; fi

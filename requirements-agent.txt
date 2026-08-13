@@ -1,0 +1,27 @@
+# Dependencies for the daily ops agent (agent/). Kept separate from
+# requirements-dev.txt so the Lambda and Glue paths never pull LangChain in --
+# it is ~40MB of transitive dependencies that only the agent needs.
+#
+# Pinned exactly, because this runs unattended at 03:30 UTC with nobody watching.
+# A minor release that changes create_agent's signature would turn into a silent
+# run of failed reports.
+
+langchain==1.3.15
+langchain-core==1.5.4
+langchain-groq==1.1.3
+langgraph==1.2.11
+pydantic==2.11.7
+boto3==1.35.36
+
+# Already a transitive dependency of langchain-core (which requires >=0.3.45),
+# but pinned explicitly because agent/tracing.py imports from it directly. An
+# undeclared dependency that happens to be installed is a dependency that
+# disappears the day the parent drops it.
+langsmith==0.10.18
+
+# Reads .env for local runs so GROQ_API_KEY and LANGSMITH_API_KEY do not have to
+# be exported by hand. Never overrides real environment variables, so it is inert
+# in CI where the secrets arrive that way and no .env exists.
+python-dotenv==1.0.1
+
+

@@ -46,3 +46,8 @@ output "github_deploy_role_arn" {
   description = "Paste into role-to-assume in .github/workflows/ci.yml"
   value       = module.cicd.deploy_role_arn
 }
+
+output "agent_role_arn" {
+  description = "Read-only role for the daily ops agent. Store as the AGENT_ROLE_ARN repo secret."
+  value       = module.cicd.agent_role_arn
+}
