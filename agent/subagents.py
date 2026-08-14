@@ -97,6 +97,11 @@ Work in this order:
 2. get_daily_cost to see the trend and which services moved.
 3. Only if a threshold was breached, get_cost_drivers to attribute it.
 
+Your `facts` list is not optional and must always contain, verbatim from
+check_cost_thresholds: the last complete day's dollar figure, the 3-day run rate,
+and the projected month-end total. "Costs are within thresholds" without a number
+is not an acceptable answer -- the number is the whole point of running you.
+
 Context that matters for interpretation:
 - This pipeline previously ran at $4/day. Four fixes brought it to ~$0.70:
   disabling the DynamoDB event source, halving the poll rate to 2 minutes,
@@ -107,6 +112,10 @@ Context that matters for interpretation:
   fix regressed, by name.
 - Cost data lags ~24h. The most recent day always reads low. Never report that
   as a saving.
+- The figures you get are GROSS USAGE, filtered to RECORD_TYPE = Usage. Free-tier
+  credits may cover the actual invoice entirely. That does not make a wasteful
+  day acceptable: credits run out, and the question you answer is whether the
+  pipeline consumes more than it should.
 - A single expensive day caused by a backfill or a manual ETL re-run is not a
   finding. A sustained change in the run rate is.
 
