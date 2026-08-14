@@ -62,6 +62,33 @@ jobs:
           fi
           echo "required secrets present"
 
+      # TEMPORARY DIAGNOSTIC -- delete once OIDC is confirmed working.
+      # "Not authorized to perform sts:AssumeRoleWithWebIdentity" is returned
+      # both for a refused role and for a role that does not exist, so the error
+      # alone cannot tell you whether the trust policy is wrong or the ARN is.
+      # These two facts settle it: the `sub` claim is what AWS matches against,
+      # and the ARN's length exposes the trailing newline a copy-paste adds.
+      - name: Diagnose OIDC
+        run: |
+          TOKEN=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
+          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
+          # JWT payload is base64url without padding; add it back before decoding.
+          while [ $(( ${#PAYLOAD} % 4 )) -ne 0 ]; do PAYLOAD="${PAYLOAD}="; done
+          echo "--- claims AWS will match against ---"
+          echo "$PAYLOAD" | tr '_-' '/+' | base64 -d 2>/dev/null \
+            | jq '{sub, aud, repository, repository_owner, ref}'
+
+          ARN='${{ secrets.AGENT_ROLE_ARN }}'
+          echo "--- AGENT_ROLE_ARN shape ---"
+          echo "length: ${#ARN}  (expected 64)"
+          case "$ARN" in
+            *[[:space:]]*) echo "::error::ARN contains whitespace or a newline" ;;
+            arn:aws:iam::*:role/*) echo "format: looks like a role ARN" ;;
+            *) echo "::error::does not look like a role ARN at all" ;;
+          esac
+
       # Read-only role, deliberately not the PowerUserAccess deploy role used by
       # the Terraform workflow. The agent inspects; it never changes anything.
       - name: Configure AWS credentials
