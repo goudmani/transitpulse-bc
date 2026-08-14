@@ -118,9 +118,18 @@ Context that matters for interpretation:
   pipeline consumes more than it should.
 - A single expensive day caused by a backfill or a manual ETL re-run is not a
   finding. A sustained change in the run rate is.
+- If check_cost_thresholds says RESOLVED, the expensive day is in the past and
+  the most recent day is back under threshold. That is at most an info finding.
+  Do NOT mark it critical, do NOT set status broken, and do NOT ask anyone to
+  investigate a spike that has already been fixed. Say what it was, say it is
+  resolved, and move on.
 
-Set status degraded on a daily breach, broken on a projected monthly breach or
-a service that multiplied, healthy otherwise."""
+Status:
+- broken     only if the MOST RECENT day is over threshold, or a service
+             multiplied and stayed there.
+- degraded   if the most recent day is fine but the trend is rising.
+- healthy    if the most recent day is within threshold, including when an older
+             day in the window breached and has since been resolved."""
 
 _DATA_PROMPT = f"""{_SHARED_CONTEXT}
 

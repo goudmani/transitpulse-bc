@@ -23,6 +23,7 @@ error, so a runaway bill reads as healthy.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from statistics import median
 
 from langchain_core.tools import tool
 
@@ -154,64 +155,130 @@ def check_cost_thresholds() -> str:
     dates = sorted(data)
     totals = {d: sum(data[d].values()) for d in dates}
 
-    # The most recent day is usually still settling, so the threshold check runs
-    # against the last *complete* day. With fewer than two days of data there is
-    # nothing complete to check.
     if len(dates) < 2:
         return problem("only one day of cost data available; need two to judge a trend.")
-    complete_day = dates[-2]
-    complete_total = totals[complete_day]
 
-    recent = [totals[d] for d in dates[-4:-1]] or [complete_total]
-    run_rate = sum(recent) / len(recent)
+    # Judge the NEWEST day, not the one before it. An earlier version graded
+    # dates[-2] on the theory that the last day was still settling, and averaged
+    # dates[-4:-1] -- which excluded the newest day entirely. The result was that
+    # a spike stayed "current" for an extra day and the day that fixed it was
+    # invisible, so the agent reported a resolved problem as a live emergency.
+    latest, prior = dates[-1], dates[-2]
+    latest_total, prior_total = totals[latest], totals[prior]
+
+    # Median, not mean: one backfill or a re-run of the ETL drags a 3-day mean
+    # far above the steady state, and projecting a month from that produces a
+    # number nobody believes. The mean is still reported so a real sustained rise
+    # is not hidden by the median.
+    window = [totals[d] for d in dates[-3:]]
+    run_rate = median(window)
+    mean_rate = sum(window) / len(window)
 
     today = datetime.now(UTC).date()
     days_in_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
     projected_month = run_rate * days_in_month.day
 
     lines = [
-        f"last complete day ({complete_day}): {money(complete_total)} "
+        f"most recent day ({latest}): {money(latest_total)} "
         f"vs threshold {money(config.DAILY_COST_THRESHOLD)}",
-        # Shown alongside because the threshold check necessarily lags a day, and
-        # without this a breach on a day that has since been fixed reads as a
-        # live emergency. If the newer day is far lower, say so rather than
-        # letting the reader discover it three sections later.
-        f"most recent day ({dates[-1]}, may still be settling): {money(totals[dates[-1]])}",
-        f"3-day run rate: {money(run_rate)}/day",
-        f"projected month at that rate: {money(projected_month)} "
+        f"day before ({prior}): {money(prior_total)}",
+        f"3-day median: {money(run_rate)}/day   (mean {money(mean_rate)}/day)",
+        f"projected month from the median: {money(projected_month)} "
         f"vs threshold {money(config.MONTHLY_COST_THRESHOLD)}",
     ]
+    if mean_rate > run_rate * 2:
+        lines.append(
+            f"Note: the mean is {mean_rate / run_rate:.1f}x the median, so a single "
+            f"expensive day dominates the window. Treat that day as an event, not a rate."
+        )
 
     breached = False
-    if complete_total > config.DAILY_COST_THRESHOLD:
+    if latest_total > config.DAILY_COST_THRESHOLD:
         breached = True
-        over = complete_total - config.DAILY_COST_THRESHOLD
-        top = sorted(data[complete_day].items(), key=lambda kv: -kv[1])[:3]
+        over = latest_total - config.DAILY_COST_THRESHOLD
+        top = sorted(data[latest].items(), key=lambda kv: -kv[1])[:3]
         lines.append(
             problem(
-                f"DAILY THRESHOLD BREACHED by {money(over)}. Top services that day: "
+                f"DAILY THRESHOLD BREACHED, and it is CURRENT: {latest} is over by "
+                f"{money(over)}. Top services: "
                 + ", ".join(f"{k} {money(v)}" for k, v in top)
             )
         )
-    if projected_month > config.MONTHLY_COST_THRESHOLD:
-        breached = True
+    elif prior_total > config.DAILY_COST_THRESHOLD:
+        # The distinguishing case. Something was expensive and no longer is.
+        # Reporting this at the same severity as a live overrun is how a daily
+        # report trains its reader to ignore it.
+        top = sorted(data[prior].items(), key=lambda kv: -kv[1])[:3]
         lines.append(
-            problem(
-                f"MONTHLY PROJECTION BREACHED by "
-                f"{money(projected_month - config.MONTHLY_COST_THRESHOLD)}."
-            )
+            f"RESOLVED: {prior} breached at {money(prior_total)} "
+            + "("
+            + ", ".join(f"{k} {money(v)}" for k, v in top)
+            + f"), but the most recent day {latest} is {money(latest_total)}, back "
+            f"under the {money(config.DAILY_COST_THRESHOLD)} threshold. This is a "
+            f"historical spike, NOT a live problem. Report it as info at most. Do "
+            f"not raise it as critical and do not ask for it to be investigated."
         )
+
+    # Two projections, because they answer different questions. The median-based
+    # one is backward-looking and still carries days from before a fix landed;
+    # the latest-day one answers "what does this cost if today repeats". When
+    # they disagree, saying so is more useful than picking one and being
+    # confidently wrong for the two days it takes the window to clear.
+    projected_from_latest = latest_total * days_in_month.day
+    lines.insert(
+        4,
+        f"projected month if {latest} repeats: {money(projected_from_latest)}",
+    )
+
+    if projected_month > config.MONTHLY_COST_THRESHOLD:
+        if projected_from_latest <= config.MONTHLY_COST_THRESHOLD:
+            lines.append(
+                f"The median-based projection ({money(projected_month)}) is over "
+                f"threshold, but it still includes the resolved spike. At the most "
+                f"recent day's rate the month lands at "
+                f"{money(projected_from_latest)}, within threshold. Report this as "
+                f"info: the window needs a few more post-fix days to clear. Not a "
+                f"finding, not a reason to set status broken."
+            )
+        else:
+            breached = True
+            lines.append(
+                problem(
+                    f"MONTHLY PROJECTION BREACHED by "
+                    f"{money(projected_month - config.MONTHLY_COST_THRESHOLD)}, and "
+                    f"the most recent day alone projects to "
+                    f"{money(projected_from_latest)}. This is a live trend."
+                )
+            )
     if not breached:
-        lines.append(ok("both daily and projected-monthly spend are within threshold"))
+        if projected_month <= config.MONTHLY_COST_THRESHOLD:
+            lines.append(
+                ok(
+                    f"most recent day {money(latest_total)} and projected month "
+                    f"{money(projected_month)} are both within threshold"
+                )
+            )
+        else:
+            # Do not claim the median projection is within threshold when it is
+            # not. The verdict is that nothing needs doing, and the reason is the
+            # stale window -- those are different statements and conflating them
+            # is the kind of small dishonesty that makes a report untrustworthy.
+            lines.append(
+                ok(
+                    f"most recent day {money(latest_total)} is within threshold. The "
+                    f"median projection {money(projected_month)} is not, but that is "
+                    f"the stale window described above, not a live trend."
+                )
+            )
 
     # Free-tier credits can cover the whole bill, which makes the invoice read
     # $0.00 while the pipeline still consumes real resources. Reporting gross
     # usage without saying so invites "but AWS charged me nothing" -- and reporting
     # only the net would hide a wasteful pipeline until the credits ran out.
-    credited = _credits_applied(complete_day)
+    credited = _credits_applied(latest)
     if credited > 0.005:
         lines.append(
-            f"\nNote: {money(credited)} of credits were applied on {complete_day}, "
+            f"\nNote: {money(credited)} of credits were applied on {latest}, "
             f"so the invoice for that day is near zero. The figures above are gross "
             f"usage, which is what says whether the pipeline is wasteful."
         )
