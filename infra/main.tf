@@ -84,11 +84,12 @@ module "serving" {
 module "cicd" {
   source = "./modules/cicd"
 
-  name         = local.name
-  acct         = local.acct
-  region       = var.region
-  github_repo  = var.github_repo
-  state_bucket = "tfstate-transitpulse-${local.acct}"
+  name                  = local.name
+  acct                  = local.acct
+  region                = var.region
+  github_repo           = var.github_repo
+  github_repo_immutable = var.github_repo_immutable
+  state_bucket          = "tfstate-transitpulse-${local.acct}"
 }
 
 module "observability" {

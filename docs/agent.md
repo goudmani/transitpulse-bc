@@ -163,6 +163,27 @@ make apply
 cd infra && terraform output -raw agent_role_arn
 ```
 
+> **The OIDC trap that costs an afternoon.** Repositories created after
+> 2026-07-15 sign the `sub` claim in GitHub's *immutable* form, appending numeric
+> IDs: `repo:owner@184206526/name@1326056479:ref:refs/heads/main`. Every tutorial
+> and every Terraform example still shows the legacy `repo:owner/name:*` form,
+> which cannot match it. STS then rejects the token with *"Not authorized to
+> perform sts:AssumeRoleWithWebIdentity"*, the identical message it returns for a
+> role that does not exist, so the trust policy reads as perfect while failing
+> every single time.
+>
+> `infra/modules/cicd/main.tf` accepts both forms. Set `github_repo_immutable` in
+> your tfvars, obtained with:
+>
+> ```bash
+> curl -s https://api.github.com/repos/<owner>/<name> | python3 -c \
+>   "import sys,json;d=json.load(sys.stdin);print(f\"{d['owner']['login']}@{d['owner']['id']}/{d['name']}@{d['id']}\")"
+> ```
+>
+> The tell that you are hitting this rather than a bad ARN: `aws iam get-role
+> --query Role.RoleLastUsed` stays empty, meaning the role has never once been
+> assumed.
+
 ### 2. Add the two repository secrets
 
 Settings → Secrets and variables → Actions → New repository secret:

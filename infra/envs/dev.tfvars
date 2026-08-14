@@ -13,3 +13,9 @@ force_destroy_buckets    = true
 # redirects. Confirm with:
 #   curl -s https://api.github.com/repos/<owner>/<repo> | grep full_name
 github_repo = "goudmani/transitpulse-bc"
+
+# This repo was created after 2026-07-15, so GitHub signs the OIDC `sub` claim in
+# the immutable form with numeric owner and repo IDs appended. Without this the
+# trust policy matches nothing and STS returns "Not authorized to perform
+# sts:AssumeRoleWithWebIdentity", which reads exactly like a missing role.
+github_repo_immutable = "goudmani@184206526/transitpulse-bc@1326056479"

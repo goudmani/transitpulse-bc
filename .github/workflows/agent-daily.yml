@@ -56,11 +56,33 @@ jobs:
           [ -n "${{ secrets.AGENT_ROLE_ARN }}" ] || missing="$missing AGENT_ROLE_ARN"
           [ -n "${{ secrets.GROQ_API_KEY }}" ]   || missing="$missing GROQ_API_KEY"
           if [ -n "$missing" ]; then
-            echo "::error title=Missing secrets::Set these under Settings -> Secrets and variables -> Actions:$missing"
-            echo "AGENT_ROLE_ARN comes from: cd infra && terraform output -raw agent_role_arn"
+            echo "::error title=Missing secrets::Set these under Settings -> Secrets and variables -> ACTIONS (not the Agents or Codespaces tab):$missing"
             exit 1
           fi
-          echo "required secrets present"
+
+          # Validate the ARN's shape here rather than letting STS reject it.
+          # AWS answers "Not authorized to perform sts:AssumeRoleWithWebIdentity"
+          # for a malformed or non-existent role exactly as it does for a refused
+          # one, so a stray newline in the secret looks identical to a broken
+          # trust policy and sends you debugging IAM for an afternoon.
+          # The value stays masked, but its length and shape are not the secret
+          # and print fine. Those two facts distinguish "wrong ARN" from "wrong
+          # trust policy", which the STS error deliberately does not.
+          ARN='${{ secrets.AGENT_ROLE_ARN }}'
+          LEN=${#ARN}
+          case "$ARN" in
+            arn:aws:iam::[0-9][0-9]*:role/*) SHAPE=ok ;;
+            *) SHAPE=bad ;;
+          esac
+          case "$ARN" in
+            *[[:space:]]*) SHAPE=whitespace ;;
+          esac
+
+          if [ "$SHAPE" != "ok" ]; then
+            echo "::error title=AGENT_ROLE_ARN is malformed::length=$LEN, problem=$SHAPE. It must be exactly 'arn:aws:iam::<account>:role/<name>' with no leading or trailing whitespace. Regenerate with: aws iam get-role --role-name github-actions-transitpulse-agent --query Role.Arn --output text | tr -d '\n' | pbcopy"
+            exit 1
+          fi
+          echo "required secrets present; AGENT_ROLE_ARN length=$LEN, shape ok"
 
       # TEMPORARY DIAGNOSTIC -- delete once OIDC is confirmed working.
       # "Not authorized to perform sts:AssumeRoleWithWebIdentity" is returned
