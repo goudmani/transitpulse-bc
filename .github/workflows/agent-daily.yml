@@ -46,6 +46,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-agent.txt
 
+      # configure-aws-credentials reports a missing role-to-assume as the generic
+      # "Could not load credentials from any providers", which sends you looking
+      # at IAM and OIDC when the actual cause is an unset repository secret.
+      # Three lines here save that entire detour.
+      - name: Check required secrets are set
+        run: |
+          missing=""
+          [ -n "${{ secrets.AGENT_ROLE_ARN }}" ] || missing="$missing AGENT_ROLE_ARN"
+          [ -n "${{ secrets.GROQ_API_KEY }}" ]   || missing="$missing GROQ_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error title=Missing secrets::Set these under Settings -> Secrets and variables -> Actions:$missing"
+            echo "AGENT_ROLE_ARN comes from: cd infra && terraform output -raw agent_role_arn"
+            exit 1
+          fi
+          echo "required secrets present"
+
       # Read-only role, deliberately not the PowerUserAccess deploy role used by
       # the Terraform workflow. The agent inspects; it never changes anything.
       - name: Configure AWS credentials

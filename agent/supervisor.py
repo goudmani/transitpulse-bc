@@ -127,6 +127,21 @@ def _summary(reports: dict[str, SubagentReport], code: CodeReport) -> str:
         )
 
 
+def _key_numbers() -> str:
+    """The figures a human tracks daily, taken from the tools rather than the model.
+
+    Empty when a tool did not run -- an absent section is honest, a fabricated
+    one is not.
+    """
+    from agent.tools._aws import recorded
+
+    blocks = [
+        recorded("cost_thresholds"),
+        recorded("collection_progress"),
+    ]
+    return "\n\n".join(b for b in blocks if b)
+
+
 def _render_findings(findings: list[Finding]) -> str:
     if not findings:
         return "_No findings._\n"
@@ -168,6 +183,12 @@ def build_report(
         headline = r.headline.replace("|", "\\|")
         lines.append(f"| {name.replace('_', ' ')} | {r.status} | {headline} |")
     lines.append("")
+
+    # Straight from the tools, bypassing the model entirely. "Costs are within
+    # thresholds" with no figure is not a useful sentence, and no amount of
+    # prompting reliably stops a model writing it.
+    if key_numbers := _key_numbers():
+        lines += ["## Key numbers", "", "```", key_numbers, "```", ""]
 
     for name, r in {**reports, "code": code}.items():
         lines.append(f"## {name.replace('_', ' ').title()}")

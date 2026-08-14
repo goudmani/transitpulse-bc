@@ -6,7 +6,15 @@ Entry point: `python -m agent.supervisor`.
 
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover
+    # A local convenience, not a requirement. In CI the secrets arrive as real
+    # environment variables and there is no .env to read, so a missing dotenv
+    # must not be able to stop the agent running.
+    def load_dotenv(*_args, **_kwargs) -> bool:
+        return False
+
 
 # Loaded here, in the package __init__, because agent.config reads the
 # environment at import time to build its module-level constants. Anywhere later

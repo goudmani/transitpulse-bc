@@ -1,34 +1,53 @@
 """Cost Explorer tools.
 
-Two things about this account that are easy to get wrong and expensive to miss:
+Three things about this account that are easy to get wrong and expensive to miss,
+and all three fail the same way: they return a plausible $0.00 rather than an
+error, so a runaway bill reads as healthy.
 
 1. Cost Explorer answers only on the global endpoint in us-east-1. Called in
-   ca-central-1 it returns an empty result set rather than an error, which reads
-   as "$0 spent" and would make this agent report a runaway bill as healthy.
-2. A filter on the `Project` cost allocation tag matches nothing until that tag
+   ca-central-1 it returns an empty result set rather than an error.
+
+2. **An unfiltered query nets credits against usage.** This account carries
+   Credit, Tax and Usage record types, and free-tier credits currently cover
+   essentially all usage -- so summing every record type reports ~$0.00 on a day
+   that actually consumed $10.33 of resources. Every query here therefore filters
+   to RECORD_TYPE = Usage. Gross usage is the number that answers "is this
+   pipeline wasteful", which is the question being asked; what the invoice says
+   after credits is a different question, and credits run out.
+
+3. A filter on the `Project` cost allocation tag matches nothing until that tag
    is activated in Billing -> Cost allocation tags, and activation does not
-   backfill. So the default query is unfiltered and account-wide; see
-   config.COST_FILTER_BY_TAG.
+   backfill. So the default is account-wide; see config.COST_FILTER_BY_TAG.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from langchain_core.tools import tool
 
 from agent import config
-from agent.tools._aws import aws_error, client, money, ok, problem, table
+from agent.tools._aws import aws_error, client, money, ok, problem, record, table
 
 
 def _ce():
     return client("ce", region=config.CE_REGION)
 
 
-def _filter() -> dict | None:
+# Usage only. Without this, Credit lines net the total to zero on a
+# credit-covered account and the agent reports a $10 day as $0.00.
+_USAGE_ONLY = {"Dimensions": {"Key": "RECORD_TYPE", "Values": ["Usage"]}}
+
+
+def _filter() -> dict:
     if not config.COST_FILTER_BY_TAG:
-        return None
-    return {"Tags": {"Key": "Project", "Values": [config.RESOURCE_PREFIX]}}
+        return _USAGE_ONLY
+    return {
+        "And": [
+            _USAGE_ONLY,
+            {"Tags": {"Key": "Project", "Values": [config.RESOURCE_PREFIX]}},
+        ]
+    }
 
 
 def _daily_by_service(days: int) -> dict[str, dict[str, float]]:
@@ -38,17 +57,14 @@ def _daily_by_service(days: int) -> dict[str, dict[str, float]]:
     # in the result can legitimately be missing or low.
     end = datetime.now(UTC).date()
     start = end - timedelta(days=days)
-    kwargs = {
-        "TimePeriod": {"Start": start.isoformat(), "End": end.isoformat()},
-        "Granularity": "DAILY",
-        "Metrics": ["UnblendedCost"],
-        "GroupBy": [{"Type": "DIMENSION", "Key": "SERVICE"}],
-    }
-    if (f := _filter()) is not None:
-        kwargs["Filter"] = f
-
     out: dict[str, dict[str, float]] = {}
-    resp = _ce().get_cost_and_usage(**kwargs)
+    resp = _ce().get_cost_and_usage(
+        TimePeriod={"Start": start.isoformat(), "End": end.isoformat()},
+        Granularity="DAILY",
+        Metrics=["UnblendedCost"],
+        GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}],
+        Filter=_filter(),
+    )
     for period in resp["ResultsByTime"]:
         day = period["TimePeriod"]["Start"]
         out[day] = {}
@@ -156,6 +172,11 @@ def check_cost_thresholds() -> str:
     lines = [
         f"last complete day ({complete_day}): {money(complete_total)} "
         f"vs threshold {money(config.DAILY_COST_THRESHOLD)}",
+        # Shown alongside because the threshold check necessarily lags a day, and
+        # without this a breach on a day that has since been fixed reads as a
+        # live emergency. If the newer day is far lower, say so rather than
+        # letting the reader discover it three sections later.
+        f"most recent day ({dates[-1]}, may still be settling): {money(totals[dates[-1]])}",
         f"3-day run rate: {money(run_rate)}/day",
         f"projected month at that rate: {money(projected_month)} "
         f"vs threshold {money(config.MONTHLY_COST_THRESHOLD)}",
@@ -183,7 +204,35 @@ def check_cost_thresholds() -> str:
     if not breached:
         lines.append(ok("both daily and projected-monthly spend are within threshold"))
 
-    return "\n".join(lines)
+    # Free-tier credits can cover the whole bill, which makes the invoice read
+    # $0.00 while the pipeline still consumes real resources. Reporting gross
+    # usage without saying so invites "but AWS charged me nothing" -- and reporting
+    # only the net would hide a wasteful pipeline until the credits ran out.
+    credited = _credits_applied(complete_day)
+    if credited > 0.005:
+        lines.append(
+            f"\nNote: {money(credited)} of credits were applied on {complete_day}, "
+            f"so the invoice for that day is near zero. The figures above are gross "
+            f"usage, which is what says whether the pipeline is wasteful."
+        )
+
+    return record("cost_thresholds", "\n".join(lines))
+
+
+def _credits_applied(day: str) -> float:
+    """Credits applied on one day, as a positive number. 0.0 if unavailable."""
+    try:
+        resp = _ce().get_cost_and_usage(
+            TimePeriod={"Start": day, "End": (date.fromisoformat(day) + timedelta(days=1)).isoformat()},
+            Granularity="DAILY",
+            Metrics=["UnblendedCost"],
+            Filter={"Dimensions": {"Key": "RECORD_TYPE", "Values": ["Credit"]}},
+        )
+        amount = float(resp["ResultsByTime"][0]["Total"]["UnblendedCost"]["Amount"])
+        return abs(amount)
+    except Exception:
+        # Purely informational, so a failure here must not fail the threshold check.
+        return 0.0
 
 
 @tool
