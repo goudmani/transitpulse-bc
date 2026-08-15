@@ -230,6 +230,41 @@ def build_code_agent() -> object:
 RECURSION_LIMIT = config.MAX_AGENT_STEPS * 2 + 6
 
 
+def _failure_advice(exc: Exception) -> str:
+    """Advice matched to the actual error.
+
+    A generic "could be a 429, could be AWS" line sent the reader to the token
+    budget when the real cause was a blocked model. Wrong advice in an automated
+    report is worse than none: it is followed.
+    """
+    msg = str(exc)
+    if "blocked at the project level" in msg or "model_permission_blocked" in msg:
+        return (
+            f"'{config.GROQ_MODEL}' is blocked in the Groq project. Enable it at "
+            "https://console.groq.com/settings/project/limits or set AGENT_MODEL "
+            "to an allowed model. Not a pipeline problem."
+        )
+    if "rate_limit" in msg or "429" in msg:
+        return (
+            "Groq rate limit. If it is tokens-per-day, the budget is spent until "
+            "UTC midnight; lower AGENT_MAX_STEPS or switch to a model with a "
+            "larger daily allowance."
+        )
+    if "401" in msg or "invalid_api_key" in msg:
+        return "GROQ_API_KEY was rejected. Rotate it and update the repository secret."
+    if "AccessDenied" in msg or "UnauthorizedOperation" in msg:
+        return (
+            "An AWS call was denied. Add the missing action to "
+            "infra/modules/cicd/agent.tf and re-apply."
+        )
+    if "recursion" in msg.lower() or "GraphRecursionError" in type(exc).__name__:
+        return (
+            "The agent hit its step limit without finishing. Raise AGENT_MAX_STEPS "
+            "or narrow the task; check the trace for a tool being called in a loop."
+        )
+    return "Check the workflow logs and the LangSmith trace for this run."
+
+
 def run_subagent(name: str, agent, task: str) -> SubagentReport:
     """Run one subagent and always come back with a report.
 
@@ -257,11 +292,7 @@ def run_subagent(name: str, agent, task: str) -> SubagentReport:
                     "title": f"{name} subagent errored out",
                     "detail": f"{type(exc).__name__}: {str(exc)[:400]}",
                     "evidence": "agent.subagents.run_subagent",
-                    "suggested_action": (
-                        "Check the workflow logs. A Groq 429 means the token budget "
-                        "for the day is spent; an AWS error means the agent role is "
-                        "missing a permission."
-                    ),
+                    "suggested_action": _failure_advice(exc),
                 }
             ],
             facts=[f"{name}: did not complete"],
