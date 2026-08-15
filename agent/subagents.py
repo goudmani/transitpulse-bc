@@ -20,7 +20,7 @@ from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
 from agent import config, tracing
-from agent.llm import shared_llm
+from agent.llm import code_llm, shared_llm
 from agent.schemas import CodeReport, SubagentReport
 from agent.tools import COST_TOOLS, DATA_TOOLS, HEALTH_TOOLS, REPO_TOOLS
 
@@ -214,9 +214,14 @@ def build_subagents() -> dict[str, object]:
 
 
 def build_code_agent() -> object:
-    """The code specialist. Built separately because it runs after the others and
-    takes their output as input."""
-    return _build(_CODE_PROMPT, REPO_TOOLS, CodeReport)
+    """The code specialist. Built separately because it runs after the others,
+    takes their output as input, and reasons harder than they do."""
+    return create_agent(
+        model=code_llm(),
+        tools=REPO_TOOLS,
+        system_prompt=_CODE_PROMPT,
+        response_format=ToolStrategy(CodeReport),
+    )
 
 
 # Each tool call costs two nodes in the graph (the model turn and the tool turn),

@@ -30,7 +30,10 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Generous because the run is deliberately paced, not because it is slow:
+    # a reasoning model on an 8K TPM budget spaces its calls ~17s apart, so a
+    # heavy day with many tool calls can take 10-15 minutes of mostly waiting.
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
