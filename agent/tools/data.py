@@ -32,7 +32,13 @@ _FORBIDDEN = re.compile(
 )
 
 
-def _run(sql: str, max_rows: int = 25) -> str:
+def query_rows(sql: str, max_rows: int = 25) -> tuple[list[str], list[list[str]]] | str:
+    """Run a read-only query and return (header, rows), or an error string.
+
+    Split out from `_run` so callers that need *values* -- the README updater
+    needs the day count as an integer -- do not have to parse a formatted table
+    back apart. One code path means the SQL guard applies to both.
+    """
     sql = sql.strip().rstrip(";")
     if not re.match(r"^\s*(select|with)\b", sql, re.IGNORECASE):
         return "REJECTED: only SELECT and WITH queries are allowed."
@@ -79,9 +85,20 @@ def _run(sql: str, max_rows: int = 25) -> str:
         return aws_error("get_query_results", exc)
 
     if not rows:
-        return "(no rows)"
+        return [], []
     header = [c.get("VarCharValue", "") for c in rows[0]["Data"]]
     body = [[c.get("VarCharValue", "NULL") for c in r["Data"]] for r in rows[1:]]
+    return header, body
+
+
+def _run(sql: str, max_rows: int = 25) -> str:
+    """query_rows, formatted for a model to read."""
+    result = query_rows(sql, max_rows)
+    if isinstance(result, str):
+        return result
+    header, body = result
+    if not header:
+        return "(no rows)"
     return table(header, body, max_rows=max_rows)
 
 

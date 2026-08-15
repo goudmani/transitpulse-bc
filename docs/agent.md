@@ -38,6 +38,47 @@ to let be wrong.
 
 Every run is traced end to end in LangSmith — see [Tracing](#tracing-langsmith).
 
+## The docs agent
+
+A second, separate run at **15:30 UTC** (`.github/workflows/agent-docs.yml`)
+keeps the README honest. Twelve hours after the ops agent on purpose: Cost
+Explorer lags ~24h and the ETL lands silver at 02:20 UTC, so mid-afternoon
+describes a settled day.
+
+It does two things, and the split between them is the design:
+
+**Numbers are rendered, never written.** Everything between `agent:*:begin` and
+`agent:*:end` markers in the README is regenerated from live queries with no
+model involved. The queries live in
+[`sql/07_profile_queries.sql`](../sql/07_profile_queries.sql) — one source of
+truth, so editing the SQL changes what the README says and the charts and the
+prose cannot disagree. A model asked to "update the figures" produces plausible
+numbers, drifts slightly each day, and eventually states something false in a
+document that looks maintained.
+
+**Prose is checked, never rewritten.** Claims no query can settle — "a deployed
+SageMaker model that beats the published schedule" — go to a model that compares
+them against live facts and *reports* contradictions to
+`reports/<date>-docs-drift.md`. It cannot edit them. A sentence is an argument,
+and rewriting one should be a human decision.
+
+The drift check returns structured `DriftClaim` objects requiring a **verbatim
+quote**, and any quote not found in the file is dropped before reporting. The
+first version returned prose and was unusable: it hedged, contradicted itself
+mid-sentence, and invented findings to fill space. It also runs on the
+higher-reasoning client, because judging whether a sentence is contradicted is
+exactly the multi-step call that low effort does badly.
+
+Charts are redrawn by re-running the profile queries into `data/processed/` and
+calling `scripts/plot_profile.py`. That directory is gitignored — derived data
+is regenerable — which is precisely why the charts had been pinned to the first
+two days of collection: nothing automatic could rebuild their inputs.
+
+```bash
+make docs           # full: figures, charts, drift check
+make docs-figures   # figures only -- no matplotlib, no model, no tokens
+```
+
 They run in a fixed order, not a model-routed one. The first three are
 independent and answer different questions, so there is nothing to route; the
 code agent runs last because it needs the others to tell it what broke. It is

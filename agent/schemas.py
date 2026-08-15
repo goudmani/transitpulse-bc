@@ -85,6 +85,42 @@ class ProposedPatch(BaseModel):
     )
 
 
+class DriftClaim(BaseModel):
+    """One README sentence that contradicts a live fact."""
+
+    quote: str = Field(
+        description="The exact sentence from the README, copied verbatim. No paraphrasing."
+    )
+    contradicts: str = Field(
+        description="Which specific fact it contradicts, and what the true value is."
+    )
+    confidence: Literal["certain", "likely"] = Field(
+        description=(
+            "certain = a number or state that is provably wrong. likely = reads as "
+            "misleading but is not flatly contradicted. Do not report anything below "
+            "'likely'."
+        )
+    )
+
+
+class DriftReport(BaseModel):
+    """The docs agent's verdict on the README's prose.
+
+    Structured rather than prose because the unstructured version rambled,
+    hedged ("does not directly contradict, but..."), and invented contradictions
+    to fill space. A schema with a required verbatim quote makes a fabricated
+    finding much harder: the sentence has to actually exist.
+    """
+
+    claims: list[DriftClaim] = Field(
+        default_factory=list,
+        description=(
+            "Empty when nothing contradicts the facts, which is the expected "
+            "result most days. Never add a claim to avoid returning an empty list."
+        ),
+    )
+
+
 class CodeReport(SubagentReport):
     """The code subagent's report, plus any patches it wants to propose."""
 
