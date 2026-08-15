@@ -25,3 +25,9 @@ langsmith==0.10.18
 python-dotenv==1.0.1
 
 
+
+# Only the docs updater needs these, to redraw the README charts from refreshed
+# Athena results. The nightly ops agent never imports them, and docs_updater
+# imports them lazily so the marked-block refresh still works without them.
+matplotlib==3.9.2
+pandas==2.2.3

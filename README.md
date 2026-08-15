@@ -10,45 +10,52 @@ its own operations report.
 
 ## Status
 
-**As of 2026-08-13, the data half is in production and the model half is not.**
+<!-- agent:status:begin -->
+**As of 2026-08-15, the data half is in production and the model half is not.**
 
 | Stage | State |
 |---|---|
-| Ingestion, bronze, silver, gold, nightly ETL | running continuously |
+| Ingestion, bronze, silver, gold | running continuously |
+| Nightly ETL | running continuously (last execution SUCCEEDED) |
 | Nightly ops agent | running |
 | Training, evaluation, model registry | provisioned in Terraform, never run |
 | Inference endpoint, prediction API | infrastructure live, no model behind it |
 
-Nothing is trained yet, so no model has been registered and no endpoint exists.
-Phase 5 splits train/validation/test by time, which needs 21 distinct service
-days; 2 are collected. The MAE figures below are **baselines computed from
-collected data**, not model results, and they are what the model will have to
-beat.
+Nothing is trained yet, so no model has been registered and no endpoint exists. Phase 5 splits train/validation/test by time, which needs 21 distinct service days; **4 are collected**, 17 to go.
+
+Gross usage on 2026-08-14 was **$1.03**, a $1.03/day median over the last three days (≈$32/month at that rate).
+<!-- agent:status:end -->
+
+The MAE figures below are **baselines computed from collected data**, not model
+results, and they are what the model will have to beat.
 
 Collection is deliberately paced rather than rushed. Progress: `make data`.
+
+> Figures in this README between `agent:*:begin` and `agent:*:end` markers are
+> regenerated daily from live queries by the docs agent
+> ([`docs/agent.md`](docs/agent.md)). Edit the queries in
+> [`sql/07_profile_queries.sql`](sql/07_profile_queries.sql), not the numbers.
 
 ## Results
 
 ### Baselines, measured
 
-Over 775,092 stop arrivals, 2026-08-11 to 08-12. **Preliminary**: two days is one
-weekday and one partial day, with no weekend, no rain and no incident. Final
-figures come from `sql/04_baselines.sql` over the full training window.
+<!-- agent:baselines:begin -->
+Over 1,921,776 labelled stop arrivals, 2026-08-11 to 2026-08-14. **Preliminary**: too few days to cover a weekend, rain, or an incident. Figures come from `sql/07_profile_queries.sql`.
 
 | Predictor | MAE (seconds) |
 |---|---|
-| Published schedule (predict zero delay) | **156.2** |
-| Persistence (bus stays as late as it currently is) | **136.4** |
+| Published schedule (predict zero delay) | **188.8** |
+| Persistence (bus stays as late as it currently is) | **161.0** |
 | Historical median for route/stop/hour | pending, needs ≥5 days of history |
 | **XGBoost model** | pending, Phase 6 |
 
-Persistence beats the printed timetable by 12.7%, which is the honest bar. "A bus
-four minutes late tends to stay four minutes late" is a hard baseline, and a model
-that only ties it is a real finding rather than a failure to hide.
+Persistence beats the printed timetable by 14.7%. The registry gate is `mae_ratio_vs_persistence <= 0.92`, so a model must reach **≤ 148.1 seconds** to be registered at all.
+<!-- agent:baselines:end -->
 
-The registry gate is set at `mae_ratio_vs_persistence <= 0.92`, so a model must
-reach **≤ 125.5 seconds** to be registered at all. A gate that always passes is
-decoration.
+That persistence number is the honest bar. "A bus four minutes late tends to stay
+four minutes late" is a hard baseline, and a model that only ties it is a real
+finding rather than a failure to hide. A gate that always passes is decoration.
 
 The historical-median baseline needs `hist_median_delay`, which requires ≥20
 observations per route/stop/day-type/hour cell from *strictly earlier* service
@@ -97,8 +104,13 @@ Decisions and their trade-offs are recorded in `docs/adr/`.
 
 ## What the data looks like
 
-775,092 stop arrivals collapsed from 16.7 million raw predictions, over the first
-two days of collection. Regenerate with `python scripts/plot_profile.py`.
+<!-- agent:dataprofile:begin -->
+1,942,280 stop arrivals over 4 days of collection (2026-08-11 to 2026-08-14), label completeness 0.989.
+<!-- agent:dataprofile:end -->
+
+The charts below are regenerated daily from
+[`sql/07_profile_queries.sql`](sql/07_profile_queries.sql); run
+`python scripts/plot_profile.py` to redraw them by hand.
 
 ![Arrival delay distribution: 40% late, 37% on time, 23% early](img/delay_distribution.png)
 

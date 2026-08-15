@@ -67,3 +67,9 @@ variable "github_repo" {
   type        = string
   default     = ""
 }
+
+variable "github_repo_immutable" {
+  description = "Same repo as owner@<owner-id>/name@<repo-id>. Required for repositories created after 2026-07-15, which emit this immutable form in the OIDC sub claim."
+  type        = string
+  default     = ""
+}

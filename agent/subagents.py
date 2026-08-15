@@ -20,7 +20,7 @@ from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
 from agent import config, tracing
-from agent.llm import shared_llm
+from agent.llm import code_llm, shared_llm
 from agent.schemas import CodeReport, SubagentReport
 from agent.tools import COST_TOOLS, DATA_TOOLS, HEALTH_TOOLS, REPO_TOOLS
 
@@ -97,6 +97,11 @@ Work in this order:
 2. get_daily_cost to see the trend and which services moved.
 3. Only if a threshold was breached, get_cost_drivers to attribute it.
 
+Your `facts` list is not optional and must always contain, verbatim from
+check_cost_thresholds: the last complete day's dollar figure, the 3-day run rate,
+and the projected month-end total. "Costs are within thresholds" without a number
+is not an acceptable answer -- the number is the whole point of running you.
+
 Context that matters for interpretation:
 - This pipeline previously ran at $4/day. Four fixes brought it to ~$0.70:
   disabling the DynamoDB event source, halving the poll rate to 2 minutes,
@@ -107,11 +112,24 @@ Context that matters for interpretation:
   fix regressed, by name.
 - Cost data lags ~24h. The most recent day always reads low. Never report that
   as a saving.
+- The figures you get are GROSS USAGE, filtered to RECORD_TYPE = Usage. Free-tier
+  credits may cover the actual invoice entirely. That does not make a wasteful
+  day acceptable: credits run out, and the question you answer is whether the
+  pipeline consumes more than it should.
 - A single expensive day caused by a backfill or a manual ETL re-run is not a
   finding. A sustained change in the run rate is.
+- If check_cost_thresholds says RESOLVED, the expensive day is in the past and
+  the most recent day is back under threshold. That is at most an info finding.
+  Do NOT mark it critical, do NOT set status broken, and do NOT ask anyone to
+  investigate a spike that has already been fixed. Say what it was, say it is
+  resolved, and move on.
 
-Set status degraded on a daily breach, broken on a projected monthly breach or
-a service that multiplied, healthy otherwise."""
+Status:
+- broken     only if the MOST RECENT day is over threshold, or a service
+             multiplied and stayed there.
+- degraded   if the most recent day is fine but the trend is rising.
+- healthy    if the most recent day is within threshold, including when an older
+             day in the window breached and has since been resolved."""
 
 _DATA_PROMPT = f"""{_SHARED_CONTEXT}
 
@@ -196,9 +214,14 @@ def build_subagents() -> dict[str, object]:
 
 
 def build_code_agent() -> object:
-    """The code specialist. Built separately because it runs after the others and
-    takes their output as input."""
-    return _build(_CODE_PROMPT, REPO_TOOLS, CodeReport)
+    """The code specialist. Built separately because it runs after the others,
+    takes their output as input, and reasons harder than they do."""
+    return create_agent(
+        model=code_llm(),
+        tools=REPO_TOOLS,
+        system_prompt=_CODE_PROMPT,
+        response_format=ToolStrategy(CodeReport),
+    )
 
 
 # Each tool call costs two nodes in the graph (the model turn and the tool turn),

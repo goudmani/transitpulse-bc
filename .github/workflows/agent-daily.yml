@@ -30,7 +30,10 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Generous because the run is deliberately paced, not because it is slow:
+    # a reasoning model on an 8K TPM budget spaces its calls ~17s apart, so a
+    # heavy day with many tool calls can take 10-15 minutes of mostly waiting.
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -45,6 +48,71 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements-agent.txt
+
+      # configure-aws-credentials reports a missing role-to-assume as the generic
+      # "Could not load credentials from any providers", which sends you looking
+      # at IAM and OIDC when the actual cause is an unset repository secret.
+      # Three lines here save that entire detour.
+      - name: Check required secrets are set
+        run: |
+          missing=""
+          [ -n "${{ secrets.AGENT_ROLE_ARN }}" ] || missing="$missing AGENT_ROLE_ARN"
+          [ -n "${{ secrets.GROQ_API_KEY }}" ]   || missing="$missing GROQ_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error title=Missing secrets::Set these under Settings -> Secrets and variables -> ACTIONS (not the Agents or Codespaces tab):$missing"
+            exit 1
+          fi
+
+          # Validate the ARN's shape here rather than letting STS reject it.
+          # AWS answers "Not authorized to perform sts:AssumeRoleWithWebIdentity"
+          # for a malformed or non-existent role exactly as it does for a refused
+          # one, so a stray newline in the secret looks identical to a broken
+          # trust policy and sends you debugging IAM for an afternoon.
+          # The value stays masked, but its length and shape are not the secret
+          # and print fine. Those two facts distinguish "wrong ARN" from "wrong
+          # trust policy", which the STS error deliberately does not.
+          ARN='${{ secrets.AGENT_ROLE_ARN }}'
+          LEN=${#ARN}
+          case "$ARN" in
+            arn:aws:iam::[0-9][0-9]*:role/*) SHAPE=ok ;;
+            *) SHAPE=bad ;;
+          esac
+          case "$ARN" in
+            *[[:space:]]*) SHAPE=whitespace ;;
+          esac
+
+          if [ "$SHAPE" != "ok" ]; then
+            echo "::error title=AGENT_ROLE_ARN is malformed::length=$LEN, problem=$SHAPE. It must be exactly 'arn:aws:iam::<account>:role/<name>' with no leading or trailing whitespace. Regenerate with: aws iam get-role --role-name github-actions-transitpulse-agent --query Role.Arn --output text | tr -d '\n' | pbcopy"
+            exit 1
+          fi
+          echo "required secrets present; AGENT_ROLE_ARN length=$LEN, shape ok"
+
+      # TEMPORARY DIAGNOSTIC -- delete once OIDC is confirmed working.
+      # "Not authorized to perform sts:AssumeRoleWithWebIdentity" is returned
+      # both for a refused role and for a role that does not exist, so the error
+      # alone cannot tell you whether the trust policy is wrong or the ARN is.
+      # These two facts settle it: the `sub` claim is what AWS matches against,
+      # and the ARN's length exposes the trailing newline a copy-paste adds.
+      - name: Diagnose OIDC
+        run: |
+          TOKEN=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
+          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
+          # JWT payload is base64url without padding; add it back before decoding.
+          while [ $(( ${#PAYLOAD} % 4 )) -ne 0 ]; do PAYLOAD="${PAYLOAD}="; done
+          echo "--- claims AWS will match against ---"
+          echo "$PAYLOAD" | tr '_-' '/+' | base64 -d 2>/dev/null \
+            | jq '{sub, aud, repository, repository_owner, ref}'
+
+          ARN='${{ secrets.AGENT_ROLE_ARN }}'
+          echo "--- AGENT_ROLE_ARN shape ---"
+          echo "length: ${#ARN}  (expected 64)"
+          case "$ARN" in
+            *[[:space:]]*) echo "::error::ARN contains whitespace or a newline" ;;
+            arn:aws:iam::*:role/*) echo "format: looks like a role ARN" ;;
+            *) echo "::error::does not look like a role ARN at all" ;;
+          esac
 
       # Read-only role, deliberately not the PowerUserAccess deploy role used by
       # the Terraform workflow. The agent inspects; it never changes anything.

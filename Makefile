@@ -87,6 +87,14 @@ agent-tools: ## Smoke-test every agent tool against AWS, no LLM, no Groq tokens
 agent: ## Run the daily ops agent now and write reports/$(shell date -u +%Y-%m-%d).md
 	python -m agent.supervisor --verbose
 
+.PHONY: docs
+docs: ## Refresh README figures and charts from live queries
+	python -m agent.docs_updater --verbose
+
+.PHONY: docs-figures
+docs-figures: ## Refresh README figures only: no charts, no model, no tokens
+	python -m agent.docs_updater --verbose --skip-charts --skip-drift
+
 .PHONY: pause
 pause: ## Stop ingestion (keeps everything else alive)
 	aws events disable-rule --name transitpulse-poll --region $(REGION)

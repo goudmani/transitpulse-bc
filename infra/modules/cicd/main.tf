@@ -36,10 +36,28 @@ data "aws_iam_policy_document" "assume" {
 
     # Scoped to this repository only. Without this condition ANY GitHub
     # repository on the internet could assume the role.
+    #
+    # Two forms are accepted because GitHub changed the `sub` claim:
+    #
+    #   legacy    repo:owner/name:ref:refs/heads/main
+    #   immutable repo:owner@<owner-id>/name@<repo-id>:ref:refs/heads/main
+    #
+    # Repositories created after 2026-07-15, and any that opt in, emit the
+    # immutable form so a recycled org or repo name cannot mint tokens matching
+    # a stale policy. A legacy-only condition silently fails to match it, and
+    # STS reports that as "Not authorized to perform sts:AssumeRoleWithWebIdentity"
+    # -- the same message it returns for a role that does not exist. Every
+    # tutorial still shows the legacy form, so this looks correct while failing.
+    #
+    # Listing both keeps one config working across old and new repositories. The
+    # scoping is not weakened: each value still pins one specific repository.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:*"]
+      values = compact([
+        "repo:${var.github_repo}:*",
+        var.github_repo_immutable != "" ? "repo:${var.github_repo_immutable}:*" : "",
+      ])
     }
   }
 }

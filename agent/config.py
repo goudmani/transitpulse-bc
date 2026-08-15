@@ -68,11 +68,37 @@ MIN_EVENTS_PER_DAY = int(os.getenv("MIN_EVENTS_PER_DAY", "150000"))
 
 # --- model -----------------------------------------------------------------
 
-# llama-3.3-70b-versatile is the strongest Groq production model at tool
-# calling, which is all these agents do. Free tier gives 30 RPM / 12K TPM /
-# 100K TPD, and see llm.py for how the run is paced to stay inside that.
-GROQ_MODEL = os.getenv("AGENT_MODEL", "llama-3.3-70b-versatile")
+# gpt-oss-120b reasons and reads code better than llama-3.3-70b, which matters
+# most for the code subagent. The trade is in the free-tier limits:
+#
+#   openai/gpt-oss-120b       30 RPM,  8K TPM, 200K TPD   (reasoning model)
+#   llama-3.3-70b-versatile   30 RPM, 12K TPM, 100K TPD
+#
+# Tighter per minute, double per day. Since a run is bounded by TPD far more
+# than by wall-clock, that is a good trade -- but the run has to be paced
+# slower to fit the narrower per-minute window. See llm.py.
+GROQ_MODEL = os.getenv("AGENT_MODEL", "openai/gpt-oss-120b")
 GROQ_TEMPERATURE = float(os.getenv("AGENT_TEMPERATURE", "0.1"))
+
+# Reasoning models emit thinking tokens that bill against the same TPM/TPD
+# budget as the answer, so effort is spent where it changes the answer.
+#
+# "low" for the infrastructure, cost and data agents. Their work is reading a
+# tool's output table and quoting numbers from it; the threshold arithmetic and
+# the month-end projection are done in Python precisely so a model never has to
+# derive them. More thinking does not make a quoted number more correct, and at
+# 8K TPM the tokens are better spent on tool output.
+#
+# Higher for the code agent, which is the one place multi-step deduction is the
+# actual task: correlate a failure with a source line, check it against recent
+# commits, and produce a diff that applies. Low effort there shows up as shallow
+# diagnoses and diffs that do not apply -- not as invented facts.
+#
+# Neither setting is a hallucination control. Grounding is: every finding must
+# quote a tool result, and the supervisor copies findings verbatim rather than
+# re-narrating them. Both are ignored for non-reasoning models.
+REASONING_EFFORT = os.getenv("AGENT_REASONING_EFFORT", "low")
+CODE_REASONING_EFFORT = os.getenv("AGENT_CODE_REASONING_EFFORT", "medium")
 
 # A wedged tool call should fail the step, not hang the workflow for six hours.
 LLM_TIMEOUT_SECONDS = int(os.getenv("AGENT_LLM_TIMEOUT", "120"))

@@ -38,6 +38,47 @@ to let be wrong.
 
 Every run is traced end to end in LangSmith — see [Tracing](#tracing-langsmith).
 
+## The docs agent
+
+A second, separate run at **15:30 UTC** (`.github/workflows/agent-docs.yml`)
+keeps the README honest. Twelve hours after the ops agent on purpose: Cost
+Explorer lags ~24h and the ETL lands silver at 02:20 UTC, so mid-afternoon
+describes a settled day.
+
+It does two things, and the split between them is the design:
+
+**Numbers are rendered, never written.** Everything between `agent:*:begin` and
+`agent:*:end` markers in the README is regenerated from live queries with no
+model involved. The queries live in
+[`sql/07_profile_queries.sql`](../sql/07_profile_queries.sql) — one source of
+truth, so editing the SQL changes what the README says and the charts and the
+prose cannot disagree. A model asked to "update the figures" produces plausible
+numbers, drifts slightly each day, and eventually states something false in a
+document that looks maintained.
+
+**Prose is checked, never rewritten.** Claims no query can settle — "a deployed
+SageMaker model that beats the published schedule" — go to a model that compares
+them against live facts and *reports* contradictions to
+`reports/<date>-docs-drift.md`. It cannot edit them. A sentence is an argument,
+and rewriting one should be a human decision.
+
+The drift check returns structured `DriftClaim` objects requiring a **verbatim
+quote**, and any quote not found in the file is dropped before reporting. The
+first version returned prose and was unusable: it hedged, contradicted itself
+mid-sentence, and invented findings to fill space. It also runs on the
+higher-reasoning client, because judging whether a sentence is contradicted is
+exactly the multi-step call that low effort does badly.
+
+Charts are redrawn by re-running the profile queries into `data/processed/` and
+calling `scripts/plot_profile.py`. That directory is gitignored — derived data
+is regenerable — which is precisely why the charts had been pinned to the first
+two days of collection: nothing automatic could rebuild their inputs.
+
+```bash
+make docs           # full: figures, charts, drift check
+make docs-figures   # figures only -- no matplotlib, no model, no tokens
+```
+
 They run in a fixed order, not a model-routed one. The first three are
 independent and answer different questions, so there is nothing to route; the
 code agent runs last because it needs the others to tell it what broke. It is
@@ -162,6 +203,27 @@ make plan          # expect ~3 new resources, all IAM, no changes to the pipelin
 make apply
 cd infra && terraform output -raw agent_role_arn
 ```
+
+> **The OIDC trap that costs an afternoon.** Repositories created after
+> 2026-07-15 sign the `sub` claim in GitHub's *immutable* form, appending numeric
+> IDs: `repo:owner@184206526/name@1326056479:ref:refs/heads/main`. Every tutorial
+> and every Terraform example still shows the legacy `repo:owner/name:*` form,
+> which cannot match it. STS then rejects the token with *"Not authorized to
+> perform sts:AssumeRoleWithWebIdentity"*, the identical message it returns for a
+> role that does not exist, so the trust policy reads as perfect while failing
+> every single time.
+>
+> `infra/modules/cicd/main.tf` accepts both forms. Set `github_repo_immutable` in
+> your tfvars, obtained with:
+>
+> ```bash
+> curl -s https://api.github.com/repos/<owner>/<name> | python3 -c \
+>   "import sys,json;d=json.load(sys.stdin);print(f\"{d['owner']['login']}@{d['owner']['id']}/{d['name']}@{d['id']}\")"
+> ```
+>
+> The tell that you are hitting this rather than a bad ARN: `aws iam get-role
+> --query Role.RoleLastUsed` stays empty, meaning the role has never once been
+> assumed.
 
 ### 2. Add the two repository secrets
 

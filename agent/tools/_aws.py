@@ -37,6 +37,27 @@ def account_id() -> str:
     return client("sts").get_caller_identity()["Account"]
 
 
+# Output from the handful of tools that carry the numbers a human actually tracks
+# daily. The supervisor renders these into the report verbatim, so the headline
+# figures appear whether or not the model chose to quote them in its findings.
+#
+# This exists because it did not work the other way round: told to put its key
+# numbers in `facts`, the cost agent reported "costs are within thresholds" with
+# no figure at all. Asking a model to remember something is weaker than taking it
+# from the tool that already produced it.
+_RECORDED: dict[str, str] = {}
+
+
+def record(key: str, output: str) -> str:
+    """Store a tool's output under `key` and return it unchanged."""
+    _RECORDED[key] = output
+    return output
+
+
+def recorded(key: str) -> str:
+    return _RECORDED.get(key, "")
+
+
 def ok(msg: str) -> str:
     return f"OK: {msg}"
 
