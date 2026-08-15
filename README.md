@@ -23,7 +23,7 @@ its own operations report.
 
 Nothing is trained yet, so no model has been registered and no endpoint exists. Phase 5 splits train/validation/test by time, which needs 21 distinct service days; **4 are collected**, 17 to go.
 
-Gross usage on 2026-08-14 was **$1.03**, a $1.03/day median over the last three days (≈$32/month at that rate).
+Gross usage on 2026-08-14 was **$1.07**, a $1.07/day median over the last three days (≈$33/month at that rate).
 <!-- agent:status:end -->
 
 The MAE figures below are **baselines computed from collected data**, not model
