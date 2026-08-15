@@ -20,7 +20,7 @@ import sys
 from datetime import UTC, datetime
 
 from agent import config, tracing
-from agent.llm import shared_llm
+from agent.llm import shared_llm, verify_model
 from agent.schemas import CodeReport, Finding, SubagentReport
 from agent.subagents import build_code_agent, build_subagents, run_subagent
 
@@ -357,6 +357,16 @@ def main() -> int:
         tracing.disable()
     else:
         tracing.configure()
+
+    # Fail before writing anything. A report saying only "the model is blocked"
+    # four times is worse than no report: it gets committed to main, it reads as
+    # a pipeline incident, and it buries the one line that matters. A red
+    # workflow with this message in the annotation is the honest signal.
+    if reason := verify_model():
+        log.error("cannot start: %s", reason)
+        if os.getenv("GITHUB_ACTIONS"):
+            print(f"::error title=Agent model unavailable::{reason.splitlines()[0]}")
+        return 2
 
     try:
         result = run_daily_report()

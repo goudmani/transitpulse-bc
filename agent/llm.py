@@ -138,6 +138,44 @@ def build_llm(
     )
 
 
+def verify_model() -> str | None:
+    """One tiny call to prove the model is usable. None if fine, else the reason.
+
+    Without this, a model the project cannot access fails once per subagent and
+    produces a report whose four sections all say the same 403. That is four
+    times the latency, four times the noise, and a committed report that looks
+    like a pipeline problem when it is an account setting. None of these
+    failures are transient, so there is nothing to gain by discovering them four
+    times.
+    """
+    try:
+        shared_llm().invoke("Reply with the single word: ok")
+        return None
+    except Exception as exc:
+        msg = str(exc)
+        if "blocked at the project level" in msg or "model_permission_blocked" in msg:
+            return (
+                f"The model '{config.GROQ_MODEL}' is blocked in your Groq project.\n"
+                f"  Fix either way:\n"
+                f"    - enable it at https://console.groq.com/settings/project/limits\n"
+                f"    - or set AGENT_MODEL to a model the project allows "
+                f"(llama-3.3-70b-versatile is known to work here)"
+            )
+        if "model_not_found" in msg or "does not exist" in msg:
+            return (
+                f"The model '{config.GROQ_MODEL}' does not exist on Groq. Check "
+                f"AGENT_MODEL against https://console.groq.com/docs/models"
+            )
+        if "invalid_api_key" in msg or "Invalid API Key" in msg or "401" in msg:
+            return "GROQ_API_KEY was rejected by Groq. Check the key."
+        if "rate_limit" in msg or "429" in msg:
+            return (
+                f"Rate limited before the run even started, which usually means the "
+                f"daily token budget for '{config.GROQ_MODEL}' is already spent."
+            )
+        return f"Model preflight failed: {type(exc).__name__}: {msg[:300]}"
+
+
 _SHARED: ChatGroq | None = None
 _CODE: ChatGroq | None = None
 

@@ -68,16 +68,28 @@ MIN_EVENTS_PER_DAY = int(os.getenv("MIN_EVENTS_PER_DAY", "150000"))
 
 # --- model -----------------------------------------------------------------
 
-# gpt-oss-120b reasons and reads code better than llama-3.3-70b, which matters
-# most for the code subagent. The trade is in the free-tier limits:
+# llama-3.3-70b-versatile, and the reason is structured output rather than
+# quality.
 #
-#   openai/gpt-oss-120b       30 RPM,  8K TPM, 200K TPD   (reasoning model)
-#   llama-3.3-70b-versatile   30 RPM, 12K TPM, 100K TPD
+#   llama-3.3-70b-versatile   30 RPM, 12K TPM, 100K TPD   standard
+#   openai/gpt-oss-120b       30 RPM,  8K TPM, 200K TPD   reasoning
 #
-# Tighter per minute, double per day. Since a run is bounded by TPD far more
-# than by wall-clock, that is a good trade -- but the run has to be paced
-# slower to fit the narrower per-minute window. See llm.py.
-GROQ_MODEL = os.getenv("AGENT_MODEL", "openai/gpt-oss-120b")
+# gpt-oss-120b reasons and reads code better, and its 200K daily budget is
+# double. It was tried and reverted on 2026-08-15: every subagent failed with
+#
+#   400 tool_use_failed: attempted to call tool 'commentary'
+#   which was not in request.tools
+#
+# gpt-oss emits the harmony channel format (analysis / commentary / final), and
+# the commentary channel leaks into Groq's tool-call validation. Since every
+# subagent here returns a Pydantic schema through ToolStrategy, which *is* a
+# tool call, that breaks the whole design rather than degrading it. The content
+# it generated was correct; only the envelope was wrong.
+#
+# Worth retrying if Groq fixes the harmony parsing. Test with
+# `ChatGroq(...).with_structured_output(SubagentReport)` before switching, not
+# by running the agent and reading the report.
+GROQ_MODEL = os.getenv("AGENT_MODEL", "llama-3.3-70b-versatile")
 GROQ_TEMPERATURE = float(os.getenv("AGENT_TEMPERATURE", "0.1"))
 
 # Reasoning models emit thinking tokens that bill against the same TPM/TPD
