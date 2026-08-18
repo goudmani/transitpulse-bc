@@ -74,8 +74,7 @@ def _code_task(reports: dict[str, SubagentReport]) -> str:
         for f in r.findings:
             if f.severity in ("critical", "warning"):
                 problems.append(
-                    f"- [{f.severity}] ({name}) {f.title}: {f.detail} "
-                    f"| evidence: {f.evidence}"
+                    f"- [{f.severity}] ({name}) {f.title}: {f.detail} " f"| evidence: {f.evidence}"
                 )
     if not problems:
         return (
@@ -288,7 +287,7 @@ def run_daily_report() -> dict:
         reports[name] = run_subagent(name, agent, _TASKS[name])
         log.info("  %s -> %s", name, reports[name].status)
 
-    code_result = run_subagent("code", build_code_agent(), _code_task(reports))
+    code_result = run_subagent("code", build_code_agent(), _code_task(reports), CodeReport)
     # run_subagent returns the schema the agent was built with, but a failure
     # path returns the base class. Normalising here keeps build_report simple.
     code = (

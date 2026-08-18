@@ -24,7 +24,7 @@ from agent import config
 _BOTO_CONFIG = Config(retries={"max_attempts": 5, "mode": "standard"})
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def client(service: str, region: str | None = None):
     """Cached boto3 client. Cached because a fresh client re-reads credentials
     and re-resolves the endpoint on every construction, which adds up when the

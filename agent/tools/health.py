@@ -291,9 +291,7 @@ def check_lambdas() -> str:
         )["Attributes"]
         depth = int(attrs["ApproximateNumberOfMessages"])
         out.append(
-            problem(f"poller DLQ has {depth} message(s)")
-            if depth
-            else ok("poller DLQ is empty")
+            problem(f"poller DLQ has {depth} message(s)") if depth else ok("poller DLQ is empty")
         )
     except Exception as exc:
         out.append(aws_error("poller DLQ", exc))
@@ -328,7 +326,9 @@ def check_etl() -> str:
                 ]
                 for e in execs
             ]
-            lines.append("last 5 ETL executions:\n" + table(["status", "started", "duration"], rows))
+            lines.append(
+                "last 5 ETL executions:\n" + table(["status", "started", "duration"], rows)
+            )
 
             start, _ = config.lookback_window()
             recent = [e for e in execs if e["startDate"] >= start]

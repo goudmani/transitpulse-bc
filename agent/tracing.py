@@ -53,9 +53,7 @@ def configure() -> bool:
 
     os.environ.setdefault("LANGSMITH_TRACING", "true")
     os.environ.setdefault("LANGSMITH_PROJECT", DEFAULT_PROJECT)
-    log.info(
-        "LangSmith tracing enabled -> project %r", os.environ.get("LANGSMITH_PROJECT")
-    )
+    log.info("LangSmith tracing enabled -> project %r", os.environ.get("LANGSMITH_PROJECT"))
     return True
 
 

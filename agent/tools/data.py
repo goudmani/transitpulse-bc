@@ -17,7 +17,7 @@ import time
 from langchain_core.tools import tool
 
 from agent import config
-from agent.tools._aws import aws_error, client, ok, problem, record, table
+from agent.tools._aws import aws_error, client, ok, record, table
 
 _POLL_SECONDS = 2
 _MAX_POLLS = 45

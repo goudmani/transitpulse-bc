@@ -272,8 +272,10 @@ def check_prose_drift(text: str, fact_summary: str) -> str:
     )
     prompt = _DRIFT_PROMPT.format(facts=fact_summary, readme=stripped[:14000])
     try:
-        report = code_llm().with_structured_output(DriftReport).invoke(
-            prompt, config=tracing.child_config("docs:prose-drift", "docs")
+        report = (
+            code_llm()
+            .with_structured_output(DriftReport)
+            .invoke(prompt, config=tracing.child_config("docs:prose-drift", "docs"))
         )
     except Exception as exc:
         log.warning("drift check failed: %s", exc)
@@ -290,7 +292,7 @@ def check_prose_drift(text: str, fact_summary: str) -> str:
         if needle and needle.lower() not in " ".join(stripped.split()).lower():
             log.warning("dropping drift claim, quote not found in README: %r", needle)
             continue
-        out.append(f"- **{c.confidence}** — \"{c.quote.strip()}\"\n  {c.contradicts.strip()}")
+        out.append(f'- **{c.confidence}** — "{c.quote.strip()}"\n  {c.contradicts.strip()}')
     return "\n\n".join(out) if out else "NO DRIFT"
 
 

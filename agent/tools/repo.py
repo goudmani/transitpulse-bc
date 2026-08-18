@@ -140,11 +140,15 @@ def search_source(pattern: str, subdir: str = "src") -> str:
         if _DENY.search(rel):
             continue
         try:
-            for n, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            for n, line in enumerate(
+                p.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+            ):
                 if rx.search(line):
                     hits.append(f"{rel}:{n}: {line.strip()[:160]}")
                     if len(hits) >= 40:
-                        return "\n".join(hits) + "\n... (40 match limit reached, narrow the pattern)"
+                        return (
+                            "\n".join(hits) + "\n... (40 match limit reached, narrow the pattern)"
+                        )
         except OSError:
             continue
     return "\n".join(hits) if hits else f"no matches for /{pattern}/ under {subdir}"

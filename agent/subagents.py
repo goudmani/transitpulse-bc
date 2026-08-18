@@ -17,11 +17,10 @@ from __future__ import annotations
 import logging
 
 from langchain.agents import create_agent
-from langchain.agents.structured_output import ToolStrategy
 
 from agent import config, tracing
 from agent.llm import code_llm, shared_llm
-from agent.schemas import CodeReport, SubagentReport
+from agent.schemas import SubagentReport
 from agent.tools import COST_TOOLS, DATA_TOOLS, HEALTH_TOOLS, REPO_TOOLS
 
 log = logging.getLogger(__name__)
@@ -192,16 +191,52 @@ Hard limits on patches:
   rationale. A described fix a human can act on beats a broken diff."""
 
 
+# Structured output is a SECOND call, not part of the agent loop.
+#
+# The obvious design -- create_agent(..., response_format=ToolStrategy(schema))
+# -- worked on llama-3.3-70b, which Groq retired on 2026-08-18. Every model left
+# on the account routes structured output through JSON mode, and Groq rejects
+# "json mode cannot be combined with tool/function calling". ToolStrategy fails
+# the same way from the other side: gpt-oss emits a call to a tool named 'json'
+# that was never in request.tools.
+#
+# So each subagent runs with its tools and answers in prose, and one further
+# call converts that prose into the schema with no tools bound. Costs one extra
+# request per subagent, which is nothing against a 200K/day budget, and it is
+# provider-agnostic: it needs only tool calling and structured output to exist,
+# never both at once.
+_STRUCTURE_PROMPT = """Convert the report below into the required schema.
+
+Rules:
+- Copy every number exactly. Do not round, recompute, or omit one.
+- Do not add findings that are not in the text, and do not drop any that are.
+- `facts` must carry the concrete figures the report quotes, one per entry.
+- If the text describes no problems, return an empty findings list.
+
+Report:
+---
+{text}
+---"""
+
+
 def _build(prompt: str, tools: list, schema: type) -> object:
-    return create_agent(
-        model=shared_llm(),
-        tools=tools,
-        system_prompt=prompt,
-        # ToolStrategy rather than letting create_agent auto-select: Groq's
-        # native JSON-schema mode is less reliable on these models than plain
-        # tool calling, which is what ToolStrategy uses.
-        response_format=ToolStrategy(schema),
-    )
+    """The agent loop only. Structuring happens afterwards, in run_subagent."""
+    return create_agent(model=shared_llm(), tools=tools, system_prompt=prompt)
+
+
+def _structure(name: str, text: str, schema: type, llm):
+    """Turn a subagent's prose into its schema. Returns None on failure."""
+    if not text or not text.strip():
+        log.warning("subagent %s produced no text to structure", name)
+        return None
+    try:
+        return llm.with_structured_output(schema).invoke(
+            _STRUCTURE_PROMPT.format(text=text[:6000]),
+            config=tracing.child_config(f"structure:{name}", "structuring"),
+        )
+    except Exception as exc:
+        log.warning("could not structure %s output: %s", name, exc)
+        return None
 
 
 def build_subagents() -> dict[str, object]:
@@ -216,12 +251,7 @@ def build_subagents() -> dict[str, object]:
 def build_code_agent() -> object:
     """The code specialist. Built separately because it runs after the others,
     takes their output as input, and reasons harder than they do."""
-    return create_agent(
-        model=code_llm(),
-        tools=REPO_TOOLS,
-        system_prompt=_CODE_PROMPT,
-        response_format=ToolStrategy(CodeReport),
-    )
+    return create_agent(model=code_llm(), tools=REPO_TOOLS, system_prompt=_CODE_PROMPT)
 
 
 # Each tool call costs two nodes in the graph (the model turn and the tool turn),
@@ -265,7 +295,7 @@ def _failure_advice(exc: Exception) -> str:
     return "Check the workflow logs and the LangSmith trace for this run."
 
 
-def run_subagent(name: str, agent, task: str) -> SubagentReport:
+def run_subagent(name: str, agent, task: str, schema: type = SubagentReport) -> SubagentReport:
     """Run one subagent and always come back with a report.
 
     A subagent that raises must not take the whole run down. The daily report is
@@ -298,17 +328,18 @@ def run_subagent(name: str, agent, task: str) -> SubagentReport:
             facts=[f"{name}: did not complete"],
         )
 
-    report = result.get("structured_response")
+    messages = result.get("messages", [])
+    text = getattr(messages[-1], "content", "") if messages else ""
+
+    report = _structure(name, text, schema, code_llm() if name == "code" else shared_llm())
     if report is not None:
         return report
 
-    # The model answered in prose instead of calling the response tool. Rather
-    # than lose the work, keep the text and flag that it was unstructured.
-    messages = result.get("messages", [])
-    text = getattr(messages[-1], "content", "") if messages else ""
-    log.warning("subagent %s returned no structured_response", name)
+    # Structuring failed. Keep the prose rather than lose the run: a section a
+    # human can still read beats a section that says only "it broke".
+    log.warning("subagent %s could not be structured", name)
     return SubagentReport(
-        headline=f"The {name} agent returned an unstructured answer.",
+        headline=f"The {name} agent answered but could not be structured.",
         status="degraded",
         findings=[],
         facts=[f"{name}: raw output: {str(text)[:600]}"],

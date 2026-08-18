@@ -68,28 +68,26 @@ MIN_EVENTS_PER_DAY = int(os.getenv("MIN_EVENTS_PER_DAY", "150000"))
 
 # --- model -----------------------------------------------------------------
 
-# llama-3.3-70b-versatile, and the reason is structured output rather than
-# quality.
+# openai/gpt-oss-120b. Not chosen so much as left standing.
 #
-#   llama-3.3-70b-versatile   30 RPM, 12K TPM, 100K TPD   standard
-#   openai/gpt-oss-120b       30 RPM,  8K TPM, 200K TPD   reasoning
+# Groq RETIRED llama-3.3-70b-versatile on 2026-08-18, mid-project. The catalog
+# went from 15 models to 13 overnight and the nightly run failed with a bare
+# 404. Nothing in this repo changed; the provider deprecated the model. Of what
+# remains, qwen/qwen3.6-27b and gpt-oss-20b are blocked at the organization
+# level, so gpt-oss-120b is the only usable chat model on this account.
 #
-# gpt-oss-120b reasons and reads code better, and its 200K daily budget is
-# double. It was tried and reverted on 2026-08-15: every subagent failed with
+#   openai/gpt-oss-120b   30 RPM, 8K TPM, 200K TPD, reasoning model
 #
-#   400 tool_use_failed: attempted to call tool 'commentary'
-#   which was not in request.tools
+# It reasons and reads code better than llama did, and its daily budget is
+# double. The cost is that it forced the two-step structuring in subagents.py:
+# gpt-oss routes structured output through JSON mode, and Groq rejects "json
+# mode cannot be combined with tool/function calling", so a subagent cannot
+# hold tools and a response schema in the same call. See the comment above
+# _build() for what that changed.
 #
-# gpt-oss emits the harmony channel format (analysis / commentary / final), and
-# the commentary channel leaks into Groq's tool-call validation. Since every
-# subagent here returns a Pydantic schema through ToolStrategy, which *is* a
-# tool call, that breaks the whole design rather than degrading it. The content
-# it generated was correct; only the envelope was wrong.
-#
-# Worth retrying if Groq fixes the harmony parsing. Test with
-# `ChatGroq(...).with_structured_output(SubagentReport)` before switching, not
-# by running the agent and reading the report.
-GROQ_MODEL = os.getenv("AGENT_MODEL", "llama-3.3-70b-versatile")
+# Lesson worth keeping: a hosted model is a dependency that can be withdrawn
+# without notice, and pinning one in config is not the same as controlling it.
+GROQ_MODEL = os.getenv("AGENT_MODEL", "openai/gpt-oss-120b")
 GROQ_TEMPERATURE = float(os.getenv("AGENT_TEMPERATURE", "0.1"))
 
 # Reasoning models emit thinking tokens that bill against the same TPM/TPD

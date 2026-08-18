@@ -111,9 +111,7 @@ def get_daily_cost(days: int = 7) -> str:
         delta_rows = []
         for s in services:
             now, before = data[latest].get(s, 0.0), data[prior].get(s, 0.0)
-            delta_rows.append(
-                [s[:38], money(before), money(now), f"{now - before:+.2f}"]
-            )
+            delta_rows.append([s[:38], money(before), money(now), f"{now - before:+.2f}"])
         delta_rows.sort(key=lambda r: -abs(float(r[3])))
         lines += [
             f"\nper-service, {prior} -> {latest}:",
@@ -200,8 +198,7 @@ def check_cost_thresholds() -> str:
         lines.append(
             problem(
                 f"DAILY THRESHOLD BREACHED, and it is CURRENT: {latest} is over by "
-                f"{money(over)}. Top services: "
-                + ", ".join(f"{k} {money(v)}" for k, v in top)
+                f"{money(over)}. Top services: " + ", ".join(f"{k} {money(v)}" for k, v in top)
             )
         )
     elif prior_total > config.DAILY_COST_THRESHOLD:
@@ -290,7 +287,10 @@ def _credits_applied(day: str) -> float:
     """Credits applied on one day, as a positive number. 0.0 if unavailable."""
     try:
         resp = _ce().get_cost_and_usage(
-            TimePeriod={"Start": day, "End": (date.fromisoformat(day) + timedelta(days=1)).isoformat()},
+            TimePeriod={
+                "Start": day,
+                "End": (date.fromisoformat(day) + timedelta(days=1)).isoformat(),
+            },
             Granularity="DAILY",
             Metrics=["UnblendedCost"],
             Filter={"Dimensions": {"Key": "RECORD_TYPE", "Values": ["Credit"]}},

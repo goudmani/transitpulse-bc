@@ -113,9 +113,11 @@ def build_llm(
         # the structured-output parser into reading reasoning as the answer.
         # gpt-oss uses include_reasoning; other families use reasoning_format,
         # and the two are mutually exclusive.
-        if "gpt-oss" in config.GROQ_MODEL.lower():
-            kwargs["model_kwargs"] = {"include_reasoning": False}
-        else:
+        # Only for non-gpt-oss reasoning models. gpt-oss rejects
+        # reasoning_format, and include_reasoning=False was tried and removed:
+        # it made no difference to the tool-calling problem it was meant to
+        # avoid, and an inert parameter is one more thing to explain later.
+        if "gpt-oss" not in config.GROQ_MODEL.lower():
             kwargs["reasoning_format"] = "hidden"
 
     log.info(
