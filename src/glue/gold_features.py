@@ -154,6 +154,14 @@ def main() -> None:
 
     features = features.where(F.col("observed_delay_sec").isNotNull())
 
+    # STATIC is Spark's default partition-overwrite mode, and it deletes the
+    # ENTIRE table path before writing -- so every nightly run was wiping each
+    # previous service_date and leaving only the day it had just processed.
+    # Silver never showed this because Iceberg MERGE accumulates; gold is plain
+    # Parquet and had been quietly rebuilding itself from scratch every night.
+    # DYNAMIC replaces only the partitions present in this DataFrame.
+    SPARK.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+
     (
         features.repartition(4)
         .write.mode("overwrite")

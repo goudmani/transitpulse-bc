@@ -149,7 +149,15 @@ Work in this order:
      quarantined that day.
    - events far below {config.MIN_EVENTS_PER_DAY:,} means the poller was down
      for part of that day. That day should be excluded, not trained on.
-3. check_feature_nulls only if you have budget left.
+3. check_gold_partitions. check_collection_progress counts SILVER; Phase 5
+   trains on GOLD, and the two have silently disagreed. gold_features.py writes
+   with mode("overwrite"), whose default scope in Spark is the whole table path
+   rather than the partitions being written -- for eight days every nightly run
+   deleted the previous days and left gold holding exactly one, while silver
+   accumulated normally and every Glue job reported SUCCEEDED. Any day present
+   in silver but missing from gold is critical: the model cannot see it, and the
+   collection-progress number is overstating readiness.
+4. check_feature_nulls only if you have budget left.
 
 Known and expected, do not report these as new findings: is_holiday and
 active_alert_on_route are literal zeros, and four weather features fall back to

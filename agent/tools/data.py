@@ -17,7 +17,7 @@ import time
 from langchain_core.tools import tool
 
 from agent import config
-from agent.tools._aws import aws_error, client, ok, record, table
+from agent.tools._aws import account_id, aws_error, client, ok, problem, record, table
 
 _POLL_SECONDS = 2
 _MAX_POLLS = 45
@@ -175,6 +175,82 @@ def check_feature_nulls() -> str:
 
 
 @tool
+def check_gold_partitions() -> str:
+    """Compare the service days present in silver against the partitions that
+    actually exist under the gold prefix in S3.
+
+    These can disagree silently, and did. gold_features.py writes with
+    mode("overwrite"), and Spark's default partitionOverwriteMode is STATIC,
+    which deletes the entire table path rather than only the partitions being
+    written. For eight days every nightly run wiped the previous days and left
+    gold holding exactly one, while silver accumulated normally and every Glue
+    job reported SUCCEEDED with a correct row count.
+
+    check_collection_progress counts silver. Phase 5 trains on gold. Any day in
+    silver but missing from gold is a day the model cannot see.
+
+    Reads S3 directly rather than querying training_features, because partition
+    projection makes the Athena table describe the paths that *could* exist
+    rather than the ones that do.
+    """
+    got = query_rows(
+        "SELECT cast(service_date AS varchar) AS service_date "
+        f"FROM {config.GLUE_DATABASE}.stop_events "
+        "GROUP BY service_date ORDER BY service_date",
+        max_rows=400,
+    )
+    if isinstance(got, str):
+        return got
+    silver = [r[0] for r in got[1] if r and r[0]]
+
+    bucket = f"{config.RESOURCE_PREFIX}-gold-{account_id()}"
+    prefix = "features/training/"
+    try:
+        pages = (
+            client("s3")
+            .get_paginator("list_objects_v2")
+            .paginate(Bucket=bucket, Prefix=prefix, Delimiter="/")
+        )
+        gold = sorted(
+            cp["Prefix"].rstrip("/").rsplit("service_date=", 1)[-1]
+            for page in pages
+            for cp in page.get("CommonPrefixes", [])
+            if "service_date=" in cp["Prefix"]
+        )
+    except Exception as exc:  # noqa: BLE001 - surfaced to the agent as text
+        return aws_error(f"list s3://{bucket}/{prefix}", exc)
+
+    span = lambda d: f"{d[0]} .. {d[-1]}" if d else "-"  # noqa: E731
+    body = table(
+        ["layer", "days", "range"],
+        [["silver", len(silver), span(silver)], ["gold", len(gold), span(gold)]],
+    )
+
+    missing = [d for d in silver if d not in gold]
+    orphans = [d for d in gold if d not in silver]
+
+    notes = []
+    if missing:
+        notes.append(
+            problem(
+                f"{len(missing)} day(s) in silver but NOT in gold: {', '.join(missing)}. "
+                "Gold is what Phase 5 trains on, so these days are invisible to the "
+                "model. Rebuild them with the gold Glue job, one run_date per day."
+            )
+        )
+    if orphans:
+        notes.append(
+            f"{len(orphans)} gold partition(s) with no matching silver day: "
+            f"{', '.join(orphans)}. Usually a leftover from a run against a date "
+            "that was later dropped from silver."
+        )
+    if not notes:
+        notes.append(ok(f"gold has all {len(silver)} silver day(s)"))
+
+    return record("gold_partitions", body + "\n\n" + "\n\n".join(notes))
+
+
+@tool
 def athena_query(sql: str) -> str:
     """Run a read-only Athena query against the transitpulse database.
 
@@ -187,4 +263,10 @@ def athena_query(sql: str) -> str:
     return _run(sql)
 
 
-DATA_TOOLS = [check_collection_progress, check_recent_days, check_feature_nulls, athena_query]
+DATA_TOOLS = [
+    check_collection_progress,
+    check_recent_days,
+    check_gold_partitions,
+    check_feature_nulls,
+    athena_query,
+]
