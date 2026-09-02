@@ -11,7 +11,7 @@ its own operations report.
 ## Status
 
 <!-- agent:status:begin -->
-**As of 2026-09-01, the data half is in production and the model half is not.**
+**As of 2026-09-02, the data half is in production and the model half is not.**
 
 | Stage | State |
 |---|---|
@@ -21,9 +21,9 @@ its own operations report.
 | Training, evaluation, model registry | provisioned in Terraform, never run |
 | Inference endpoint, prediction API | infrastructure live, no model behind it |
 
-Nothing is trained yet, so no model has been registered and no endpoint exists. Phase 5 splits train/validation/test by time, which needs 21 distinct service days; **21 are collected** — Phase 5 is unblocked.
+Nothing is trained yet, so no model has been registered and no endpoint exists. Phase 5 splits train/validation/test by time, which needs 21 distinct service days; **22 are collected** — Phase 5 is unblocked.
 
-Gross usage on 2026-08-31 was **$1.01**, a $1.01/day median over the last three days (≈$30/month at that rate).
+Gross usage on 2026-09-01 was **$0.00**, a $0.97/day median over the last three days (≈$29/month at that rate).
 <!-- agent:status:end -->
 
 The MAE figures below are **baselines computed from collected data**, not model
@@ -41,16 +41,16 @@ Collection is deliberately paced rather than rushed. Progress: `make data`.
 ### Baselines, measured
 
 <!-- agent:baselines:begin -->
-Over 11,797,396 labelled stop arrivals, 2026-08-11 to 2026-08-31. Computed over the full 21-day training window. Figures come from `sql/07_profile_queries.sql`.
+Over 12,437,861 labelled stop arrivals, 2026-08-11 to 2026-09-01. Computed over the full 22-day training window. Figures come from `sql/07_profile_queries.sql`.
 
 | Predictor | MAE (seconds) |
 |---|---|
-| Published schedule (predict zero delay) | **156.2** |
-| Persistence (bus stays as late as it currently is) | **136.1** |
+| Published schedule (predict zero delay) | **155.7** |
+| Persistence (bus stays as late as it currently is) | **135.6** |
 | Historical median for route/stop/hour | see `sql/07_profile_queries.sql` query 4 |
 | **XGBoost model** | pending, Phase 6 |
 
-Persistence beats the printed timetable by 12.9%. The registry gate is `mae_ratio_vs_persistence <= 0.92`, so a model must reach **≤ 125.2 seconds** to be registered at all.
+Persistence beats the printed timetable by 12.9%. The registry gate is `mae_ratio_vs_persistence <= 0.92`, so a model must reach **≤ 124.8 seconds** to be registered at all.
 <!-- agent:baselines:end -->
 
 That persistence number is the honest bar. "A bus four minutes late tends to stay
@@ -105,7 +105,7 @@ Decisions and their trade-offs are recorded in `docs/adr/`.
 ## What the data looks like
 
 <!-- agent:dataprofile:begin -->
-11,922,440 stop arrivals over 21 days of collection (2026-08-11 to 2026-08-31), label completeness 0.990.
+12,566,549 stop arrivals over 22 days of collection (2026-08-11 to 2026-09-01), label completeness 0.990.
 <!-- agent:dataprofile:end -->
 
 The charts below are regenerated daily from
