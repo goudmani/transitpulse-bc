@@ -45,13 +45,40 @@ GLUE_DB = ARGS["glue_db"]
 SILVER_TABLE = ARGS["silver_table"]
 GOLD_BUCKET = ARGS["gold_bucket"]
 
+# Vancouver, not a fixed -7 offset: the collection window crosses the PDT/PST
+# boundary and from_utc_timestamp resolves DST from the zone database.
+LOCAL_TZ = "America/Vancouver"
+
 LOOKBACK_DAYS = 28
 MIN_CELL_COUNT = 20  # do not trust an aggregate built from a handful of rows
 PEAK_HOURS = [7, 8, 15, 16, 17]
 
 
 def read_silver() -> DataFrame:
-    return SPARK.table(SILVER_TABLE)
+    """Silver, with the temporal features re-derived in LOCAL time.
+
+    silver_stop_events.py built hour_of_day, day_of_week and is_weekend from
+    observed_arrival_ts, which is UTC. Vancouver is UTC-7, so every arrival after
+    17:00 local -- roughly 29% of rows, and the second-busiest stretch of the day
+    -- landed on the following UTC day: a Friday 20:00 bus was labelled Saturday,
+    is_weekend flipped, and PEAK_HOURS (written for local hours) matched midnight
+    and mid-morning instead of the two rushes.
+
+    Re-derived here rather than in silver because silver reads bronze, bronze
+    expires at 30 days, and the earliest collected days are already close to that
+    edge. observed_arrival_ts is a correct UTC instant, so this needs no bronze.
+
+    Applied to the whole table, not just the run date: historical_priors() groups
+    by is_weekend and hour_of_day and is joined back on both, so priors and
+    today's rows have to agree about what hour it is.
+    """
+    local = F.from_utc_timestamp(F.col("observed_arrival_ts"), LOCAL_TZ)
+    return (
+        SPARK.table(SILVER_TABLE)
+        .withColumn("hour_of_day", F.hour(local))
+        .withColumn("day_of_week", F.dayofweek(local))
+        .withColumn("is_weekend", F.col("day_of_week").isin(1, 7).cast("int"))
+    )
 
 
 def historical_priors(silver: DataFrame) -> DataFrame:
@@ -135,7 +162,8 @@ def main() -> None:
         .withColumn("is_holiday", F.lit(0))
         .withColumn(
             "minutes_since_service_start",
-            F.col("hour_of_day") * F.lit(60) + F.minute(F.col("observed_arrival_ts")),
+            F.col("hour_of_day") * F.lit(60)
+            + F.minute(F.from_utc_timestamp(F.col("observed_arrival_ts"), LOCAL_TZ)),
         )
         .withColumn("active_alert_on_route", F.lit(0))
     )
