@@ -75,10 +75,15 @@ def build(args: argparse.Namespace) -> Pipeline:
         # Only meaningful for spot; SageMaker rejects it on on-demand.
         max_wait=None if args.no_spot else 10800,
         hyperparameters={"num-round": 800, "max-depth": 8, "eta": 0.08},
-        metric_definitions=[
-            {"Name": "validation:mae", "Regex": r"validation:mae=([0-9\.]+)"},
-            {"Name": "validation:rmse", "Regex": r"validation:rmse=([0-9\.]+)"},
-        ],
+        # No metric_definitions. sagemaker-xgboost is a FIRST-PARTY image, and
+        # CreateTrainingJob rejects AlgorithmSpecification.MetricDefinitions for
+        # 1P algorithms outright -- "You can't override the metric definitions for
+        # Amazon SageMaker algorithms" -- even in script mode, because script mode
+        # reuses the same image as the built-in algorithm. The container already
+        # publishes validation:mae and validation:rmse from the standard XGBoost
+        # eval output, and evaluate.py is the authoritative scorer regardless.
+        # The `validation:mae=` line train.py prints stays: it is human-readable
+        # in CloudWatch and is what a future HyperparameterTuner would scrape.
         sagemaker_session=session,
     )
 
