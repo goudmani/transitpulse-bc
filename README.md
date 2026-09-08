@@ -175,7 +175,7 @@ Decisions and their trade-offs are recorded in `docs/adr/`.
 ## What the data looks like
 
 <!-- agent:dataprofile:begin -->
-15,506,255 stop arrivals over 27 days of collection (2026-08-11 to 2026-09-06), label completeness 0.990.
+15,849,990 stop arrivals over 28 days of collection (2026-08-11 to 2026-09-07), label completeness 0.990.
 <!-- agent:dataprofile:end -->
 
 The charts below are drawn by `python scripts/plot_profile.py` from the CSVs in

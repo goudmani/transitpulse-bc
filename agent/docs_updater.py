@@ -160,6 +160,25 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
     metrics = _evaluation()
 
     if metrics:
+        # Once a model exists, the WHOLE table comes from its evaluation report,
+        # not from query 3. The two describe different populations and disagree:
+        # query 3 averages all 27 days, where the earliest days have ~38% of
+        # hist_median_delay missing (it needs 20 observations from strictly
+        # earlier dates) and coalescing those to zero drags the historical
+        # baseline to 140.0s -- behind persistence. On the test week the priors
+        # are mature, only 16% are missing, and historical wins at 127.3s.
+        # Mixing the two would print a table where persistence looks strongest
+        # directly above a sentence saying the model beat historical.
+        scope = (
+            f"Measured on the held-out test split: {metrics['n_test']:,} arrivals the model "
+            "never saw. Baselines are recomputed on those same rows, so every figure in the "
+            "table describes one population."
+        )
+        rows = [
+            ("Published schedule (predict zero delay)", metrics["schedule_mae"]),
+            ("Persistence (bus stays as late as it currently is)", metrics["persistence_mae"]),
+            ("Historical median for route/stop/day-type/hour", metrics["historical_mae"]),
+        ]
         model_row = f"**{metrics['mae']:.1f}**"
         verdict = (
             f"The **XGBoost model reaches {metrics['mae']:.1f}s** on "
@@ -173,6 +192,16 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
             f"**{metrics['mae_ratio_vs_best_baseline']:.4f}** and was registered."
         )
     else:
+        # No model yet: describe the whole collected window from query 3.
+        scope = (
+            f"Over {base.n:,} labelled stop arrivals, {span}. {caveat} "
+            "Figures come from `sql/07_profile_queries.sql`."
+        )
+        rows = [
+            ("Published schedule (predict zero delay)", base.mae_schedule),
+            ("Persistence (bus stays as late as it currently is)", base.mae_persistence),
+            ("Historical median for route/stop/day-type/hour", base.mae_historical),
+        ]
         model_row = "pending"
         verdict = (
             f"The strongest baseline is **{best_name}** at {best_mae:.1f}s, which "
@@ -182,22 +211,14 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
             f"**≤ {base.registry_gate_sec:.1f} seconds** to be registered at all."
         )
 
+    table = [f"| {label} | **{value:.1f}** |" for label, value in rows]
+    if not metrics and not base.mae_historical:
+        table[-1] = "| Historical median for route/stop/day-type/hour | " + historical + " |"
+
     return "\n".join(
-        [
-            f"Over {base.n:,} labelled stop arrivals, {span}. "
-            f"{caveat} Baselines come from `sql/07_profile_queries.sql`; "
-            "the model figure comes from the pipeline's own evaluation step.",
-            "",
-            "| Predictor | MAE (seconds) |",
-            "|---|---|",
-            f"| Published schedule (predict zero delay) | **{base.mae_schedule:.1f}** |",
-            f"| Persistence (bus stays as late as it currently is) | "
-            f"**{base.mae_persistence:.1f}** |",
-            f"| Historical median for route/stop/day-type/hour | {historical} |",
-            f"| **XGBoost model** | {model_row} |",
-            "",
-            verdict,
-        ]
+        [scope, "", "| Predictor | MAE (seconds) |", "|---|---|"]
+        + table
+        + [f"| **XGBoost model** | {model_row} |", "", verdict]
     )
 
 
