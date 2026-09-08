@@ -133,10 +133,9 @@ footer a { color: #9fc2f5; }
 
 <header class="masthead">
   <div class="shell">
-    <div class="eyebrow" style="color:#8fa3b3">Build log · August–September 2026</div>
+    <div class="eyebrow" style="color:#8fa3b3">Build log · August to September 2026</div>
     <h1>TransitPulse Build Log</h1>
-    <p class="lede">A streaming data platform and delay model for Metro Vancouver buses —
-    and an honest account of the eighteen bugs that had to be found before any of the
+    <p class="lede">A streaming data platform and delay model for Metro Vancouver buses, and an honest account of the eighteen bugs that had to be found before any of the
     numbers meant anything.</p>
     <div class="rule"></div>
   </div>
@@ -184,13 +183,13 @@ footer a { color: #9fc2f5; }
         <p>A Lambda polls three TransLink GTFS-Realtime feeds, decodes protobuf, and writes to a
         Kinesis stream that Firehose drains into S3 as Parquet. Roughly 16 million rows a day.</p>
         <p>One shard accepts 1,000 records per second. The poller was pushing about 2,400. Kinesis
-        throttled, invocations failed, and polls went to the dead-letter queue — losing data that
+        throttled, invocations failed, and polls went to the dead-letter queue. That loses data that
         can never be re-fetched, because a real-time feed has no history.</p>
       </div>
 
       <div class="stop2">
         <div class="when">Stop 3 · The lakehouse</div>
-        <h3>Bronze, silver, gold — and 25 rows collapsing into one</h3>
+        <h3>Bronze, silver, gold, and 25 rows collapsing into one</h3>
         <p>Bronze is raw Parquet. Silver is Iceberg, one row per <em>arrival</em> rather than per
         <em>prediction</em>: the feed re-publishes its guess for the same bus at the same stop every
         two minutes, so 2,021,771 bronze rows collapsed to 79,945 real stop events. Gold adds the
@@ -204,12 +203,12 @@ footer a { color: #9fc2f5; }
         <div class="when">Stop 4 · Cost</div>
         <h3>$120/month, projected, on day three</h3>
         <p>The first days ran at about $4/day. The estimate had been $21/month. Four changes brought
-        it to $0.79/day — a scale where a portfolio project can run for a month without thinking
-        about it.</p>
+        it to $0.79/day. That is a scale where a portfolio project can run for a month without
+        thinking about it.</p>
         <p>The largest single win was counterintuitive: <strong>Firehose bills every record rounded
         up to 5 KB</strong>, and the rows were about 200 bytes each. Unpacked, 2.3 GB of real data
-        was being billed as 57 GB. Packing 100 rows into each Kinesis record — and adding a
-        de-aggregation processor on the Firehose side to split them back out — fixed it.</p>
+        was being billed as 57 GB. Packing 100 rows into each Kinesis record fixed it, with a de-aggregation processor on the
+        Firehose side to split them back out again.</p>
       </div>
 
       <div class="stop2">
@@ -218,8 +217,8 @@ footer a { color: #9fc2f5; }
         <p>GTFS-Realtime marks cancelled trips with <code>schedule_relationship = 3</code>. A
         cancelled trip never arrives, so its last-published delay is fiction. The field was being
         dropped at the bronze-to-silver boundary, so nothing downstream could filter on it.</p>
-        <p>Filtering them removed only 0.7% of stop events — cancelled trips get re-published more
-        often than scheduled ones — but raised label completeness from 0.982 to 0.991.</p>
+        <p>Filtering them removed only 0.7% of stop events, because cancelled trips get re-published more often than
+        scheduled ones, but it raised label completeness from 0.982 to 0.991.</p>
       </div>
 
       <div class="stop2">
@@ -240,10 +239,10 @@ footer a { color: #9fc2f5; }
         <p>Four separate defects turned out to be one mistake wearing different clothes. The worst:
         <code>hour_of_day</code>, <code>day_of_week</code> and <code>is_weekend</code> were derived
         from a UTC timestamp, but the peak-hours list was written for local hours. Vancouver is
-        UTC−7 in summer, so every arrival after 17:00 local — about 29% of rows, and the
-        second-busiest stretch of the day — was stamped with the next day's date. A Friday evening
+        UTC−7 in summer, so every arrival after 17:00 local was stamped with the next day's date. That is about 29%
+        of rows, and the second-busiest stretch of the day. A Friday evening
         bus was labelled Saturday.</p>
-        <p>The fix is <code>from_utc_timestamp(ts, "America/Vancouver")</code> — a real zone rather
+        <p>The fix is <code>from_utc_timestamp(ts, "America/Vancouver")</code>, a real zone rather
         than a fixed −7, because the collection window crosses the daylight-saving boundary and a
         fixed offset is a bug with a delayed fuse.</p>
       </div>
@@ -251,7 +250,7 @@ footer a { color: #9fc2f5; }
       <div class="stop2">
         <div class="when">Stop 8 · The split</div>
         <h3>Two weeks held out, never shuffled</h3>
-        <p>7.23M rows to train, 4.13M to validate, 4.16M to test — split by date, not at random. A
+        <p>7.23M rows to train, 4.13M to validate, 4.16M to test, split by date and not at random. A
         random split leaks the future through the historical aggregates: a row from Tuesday helps
         predict Monday, and every metric becomes fraudulent.</p>
         <p>The split key is the GTFS <em>service date</em>, not the calendar date, so a trip
@@ -261,13 +260,12 @@ footer a { color: #9fc2f5; }
 
       <div class="stop2 terminus">
         <div class="when">Stop 9 · The model</div>
-        <h3>114.3 seconds, and a baseline that wasn't the one we expected</h3>
+        <h3>114.3 seconds, and a baseline that was not the one we expected</h3>
         <p>XGBoost, optimising absolute error directly because that is the metric being reported.
         Trained on SageMaker, evaluated against three baselines on the held-out week, gated on the
         result, and registered.</p>
         <p>The surprise was which baseline was hardest. The project had assumed persistence would be
-        the bar. The historical median beat it — and the registry gate had been pointed at the wrong
-        one.</p>
+        the bar. The historical median beat it, and the registry gate had been pointed at the wrong one.</p>
       </div>
 
     </div>
@@ -294,7 +292,7 @@ footer a { color: #9fc2f5; }
         <span class="tag">Silent · found by checking a nullable column</span>
         <h4><code>to_timestamp()</code> on an epoch integer returns NULL</h4>
         <p>GTFS timestamps arrive as Unix epoch seconds. <code>to_timestamp()</code> parses
-        <em>strings</em>; given a bigint it returns null rather than erroring. Four temporal features
+        <em>strings</em>. Given a bigint it returns null rather than erroring. Four temporal features
         were silently null for every row.</p>
         <p class="fix"><b>Fix:</b> <code>timestamp_seconds()</code>. <b>Lesson:</b> in Spark, a
         type mismatch is usually a null, not an exception.</p>
@@ -306,7 +304,7 @@ footer a { color: #9fc2f5; }
         <p>29% of rows carried the wrong hour, the wrong day of week, and the wrong weekend flag.
         Nothing failed. The model trained happily on it.</p>
         <p class="fix"><b>Found by:</b> drawing an hour-of-day chart and noticing it showed a bus
-        network with no overnight trough — which is not a thing that exists. <b>Lesson:</b> plot the
+        network with no overnight trough, which is not a thing that exists. <b>Lesson:</b> plot the
         data. A chart of something physical fails visibly in a way a row count never does.</p>
       </div>
 
@@ -318,7 +316,7 @@ footer a { color: #9fc2f5; }
         <p class="fix"><b>Fix:</b> <code>partitionOverwriteMode = dynamic</code>, then backfill.
         <b>Lesson:</b> monitor the thing you care about, not its upstream. The health check counted
         silver rows, so it never noticed gold was empty. A gold-partition check was added to the ops
-        agent afterwards — reading S3 directly, because partition projection would have described
+        agent afterwards, reading S3 directly, because partition projection would have described
         folders that <em>could</em> exist and hidden the bug all over again.</p>
       </div>
 
@@ -327,7 +325,7 @@ footer a { color: #9fc2f5; }
         <h4>The static feed had a column the schema didn't</h4>
         <p>TransLink's <code>trips.txt</code> includes <code>trip_short_name</code>, which the
         generic GTFS DDL omits. Registering the table with the wrong column order would have shifted
-        every field by one — <code>route_id</code> reading from <code>service_id</code> — with no
+        every field by one, with <code>route_id</code> reading from <code>service_id</code>, and no
         error at any point.</p>
         <p class="fix"><b>Found by:</b> checking the header bytes of the CSV before registering the
         table rather than after. <b>Lesson:</b> a specification describes what a feed may contain,
@@ -341,7 +339,7 @@ footer a { color: #9fc2f5; }
         was covered by credits, and an unfiltered query sums Usage, Credit and Tax record types, so
         credits netted usage to roughly nothing.</p>
         <p class="fix"><b>Fix:</b> filter <code>RECORD_TYPE = Usage</code>. <b>Lesson:</b> gross
-        usage is the number that answers "is this wasteful". Credits run out; the burn rate is what
+        usage is the number that answers "is this wasteful". Credits run out. The burn rate is what
         you are actually managing.</p>
       </div>
 
@@ -349,7 +347,7 @@ footer a { color: #9fc2f5; }
 
     <div class="pull">
       <p><strong>The pattern across all six:</strong> none of them threw. Every one was found by
-      somebody looking at an actual number and asking whether it was plausible — a row count, a
+      somebody looking at an actual number and asking whether it was plausible: a row count, a
       column header, a chart shape, a folder listing, a bill. The tests passed throughout. The
       dashboards were green throughout.</p>
     </div>
@@ -368,26 +366,25 @@ footer a { color: #9fc2f5; }
           <tr><td>Published schedule</td><td class="num">152.1s</td><td>the timetable is right; predict zero delay</td></tr>
           <tr><td>Persistence</td><td class="num">130.2s</td><td>a bus four minutes late stays four minutes late</td></tr>
           <tr><td><strong>Historical median</strong></td><td class="num"><strong>127.3s</strong></td><td>this stop, at this hour, on this type of day</td></tr>
-          <tr><td><strong>XGBoost</strong></td><td class="num"><strong>114.3s</strong></td><td>—</td></tr>
+          <tr><td><strong>XGBoost</strong></td><td class="num"><strong>114.3s</strong></td><td>the model</td></tr>
         </tbody>
       </table>
     </div>
 
     <p>The pipeline gated on <code>mae_ratio_vs_persistence &lt;= 0.92</code>, which assumed
-    persistence was the toughest baseline. It isn't. To rule out an artefact — the historical
-    feature is null for 16% of rows and falls back to predicting zero — both were re-scored on only
+    persistence was the toughest baseline. It isn't. To rule out an artefact, since the historical
+    feature is null for 16% of rows and falls back to predicting zero, both were re-scored on only
     the 3,489,305 rows where both are genuinely defined. The gap widened: <strong>126.1s for
     historical against 131.5s for persistence.</strong></p>
 
     <p>So delay at a given stop is more a property of <em>that stop at that hour</em> than of the
-    individual bus. Left alone, the gate would have admitted a model scoring 125s — worse than a
-    lookup table — while reporting that it had passed. It now measures against whichever baseline
+    individual bus. Left alone, the gate would have admitted a model scoring 125s, worse than a lookup table, while reporting that it had passed. It now measures against whichever baseline
     actually wins.</p>
 
     <div class="pull">
       <p><strong>Fifteen trees.</strong> Training was configured for 800 boosting rounds. Early
       stopping halted at 64, with the best validation score at round 15. Past that, training error
-      kept falling while validation error rose — with 7.2 million training rows, that is not a
+      kept falling while validation error rose. With 7.2 million training rows that is not a
       shortage of data. It is two different weeks of a city. Early stopping is the difference
       between noticing that and shipping it.</p>
     </div>
@@ -399,7 +396,7 @@ footer a { color: #9fc2f5; }
     <div class="grid2" style="margin-top:22px">
       <div class="card">
         <h4>Every training quota was zero</h4>
-        <p>Not just spot — every <code>ml.*</code> training instance quota on a new account was 0, so
+        <p>Not just spot. Every <code>ml.*</code> training instance quota on a new account was 0, so
         turning off spot changed nothing. Two quota increases, both free. A further trap: the request
         API validates against the <em>published default</em>, not your applied value, so asking for 2
         of a quota defaulting to 4 is rejected as a decrease even when you currently have none.</p>
@@ -408,7 +405,7 @@ footer a { color: #9fc2f5; }
         <h4>Two APIs that look identical</h4>
         <p>In the SageMaker SDK, <code>estimator.fit()</code> means "train now" under a
         <code>Session</code> and "record this step" under a <code>PipelineSession</code>. Using the
-        wrong one produced a <code>TypeError</code> about string conversion — botocore crashing while
+        wrong one produced a <code>TypeError</code> about string conversion, which was botocore crashing while
         formatting its own error message about an unresolved pipeline variable.</p>
       </div>
       <div class="card">
@@ -439,12 +436,12 @@ footer a { color: #9fc2f5; }
         <h4>Assert the invariant, not the run</h4>
         <p>Every silent bug passed because the job checked "did I finish" rather than "is the output
         the shape it must be". Row conservation across a split, partition count matching distinct
-        dates, no nulls in a required column — cheap assertions that fail loudly.</p>
+        dates, no nulls in a required column. Cheap assertions that fail loudly.</p>
       </div>
       <div class="card">
         <h4>Plot it on day one</h4>
         <p>The timezone bug survived weeks of green dashboards and died the moment someone drew a
-        chart. Physical data has a shape you already know; a bad chart is obvious in a way a bad row
+        chart. Physical data has a shape you already know. A bad chart is obvious in a way a bad row
         count is not.</p>
       </div>
       <div class="card">

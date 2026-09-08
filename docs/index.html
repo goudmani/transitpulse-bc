@@ -200,7 +200,24 @@ section + section { border-top: 1px solid var(--rule); }
 .chip[aria-pressed="true"] { background: var(--data); border-color: var(--data); color: #fff; font-weight: 500; }
 .rail .count { font-family: var(--mono); font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 13px; margin-top: 4px; }
 
+.key {
+  display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 14px;
+  font-size: 13px; color: var(--ink-2);
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  padding: 11px 0;
+}
+.key b { font-family: var(--mono); font-weight: 600; }
+.key .neg { color: var(--good); }
+.key .pos { color: var(--bad); }
+
 .results { display: flex; flex-direction: column; gap: 9px; }
+
+/* what the two lookup baselines would have said for this exact arrival */
+.arrival .versus {
+  font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 5px;
+  display: flex; flex-wrap: wrap; gap: 3px 12px;
+}
+.arrival .versus b { font-weight: 600; color: var(--ink-2); }
 
 .arrival {
   background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--rule-strong);
@@ -285,8 +302,9 @@ footer p { max-width: 72ch; }
       <p class="sub">How late will this bus actually be? A gradient-boosted model, scored against
       three baselines on 4.16&nbsp;million Metro Vancouver arrivals it was never shown.</p>
       <p class="meta">
-        Held-out week 2026-08-31 → 09-06 · trained on 7.23M arrivals from 2026-08-11 → 08-23 ·
-        <a href="https://github.com/goudmani/transit-pulse-bc">source on GitHub</a>
+        Held-out week 2026-08-31 → 09-06 · trained on 7.23M arrivals from 2026-08-11 → 08-23<br>
+        <a href="./build-log.html">How it was built</a> ·
+        <a href="https://github.com/goudmani/transit-pulse-bc">Source on GitHub</a>
       </p>
     </div>
   </div>
@@ -301,14 +319,14 @@ footer p { max-width: 72ch; }
   <section>
     <div class="section-head">
       <div class="eyebrow">The result</div>
-      <h2>It beats every simpler predictor — by 10%</h2>
+      <h2>It beats every simpler predictor by 10%</h2>
       <p>Mean absolute error, in seconds, on the same held-out arrivals. Lower is better.
       A model that cannot beat a lookup table has not earned the compute it cost.</p>
     </div>
     <div class="bars" id="bars"></div>
     <div class="callout">
       <p><strong>The strongest baseline was not the obvious one.</strong> The project assumed
-      persistence — "a bus four minutes late stays four minutes late" — would be the bar to clear.
+      persistence, "a bus four minutes late stays four minutes late", would be the bar to clear.
       It wasn't. The historical median for that stop, at that hour, on that type of day is better:
       127.3s against 130.2s. The registry gate was rewired to measure against whichever baseline
       actually wins, because a gate pointed at the wrong one would have passed a model a lookup
@@ -321,8 +339,14 @@ footer p { max-width: 72ch; }
       <div class="eyebrow">Explore</div>
       <h2>Real arrivals, real predictions</h2>
       <p>Every row below is an actual bus arrival from the held-out week, scored by the registered
-      model artifact. Nothing here is simulated — the prediction is what the model said, and
+      model artifact. Nothing here is simulated: the prediction is what the model said, and
       <em>actual</em> is what the bus did.</p>
+      <div class="key">
+        <span><b class="neg">−90s</b> arrived <b>early</b></span>
+        <span><b class="pos">+90s</b> arrived <b>late</b></span>
+        <span><b>Off by</b> is the gap between predicted and actual. It is the only column that
+        measures the model.</span>
+      </div>
     </div>
     <div class="explorer">
       <aside class="rail">
@@ -363,6 +387,26 @@ footer p { max-width: 72ch; }
 
   <section>
     <div class="section-head">
+      <div class="eyebrow">The shape of the error</div>
+      <h2>Wrong in both directions, roughly equally</h2>
+      <p>Every prediction in the held-out week, grouped by how far off it was. Bars left of zero
+      are predictions that were too optimistic (the bus was later than the model said). Bars right
+      of zero were too pessimistic.</p>
+    </div>
+    <div class="chart-wrap">
+      <svg id="err-chart" viewBox="0 0 900 300" role="img"
+           aria-label="Distribution of signed prediction error, centred close to zero with long tails in both directions."></svg>
+    </div>
+    <p style="margin-top:16px;color:var(--ink-2)">This is the chart that says whether a model is
+    <em>biased</em> rather than merely imprecise. A model that systematically under-predicted
+    lateness, which is the useful failure mode to catch, would pile up on one side. This one does
+    not: <strong>51.4% of predictions were too optimistic and 48.6% too pessimistic</strong>, which
+    is about as even as it gets. The width is the real limitation, not the centre. Half the mass
+    sits inside 72 seconds and the rest trails away into buses nothing could have predicted.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
       <div class="eyebrow">Where it wins</div>
       <h2>The advantage is congestion, not the clock</h2>
       <p>Mean absolute error by hour of day, Vancouver local time. The gap between the blue line
@@ -381,7 +425,7 @@ footer p { max-width: 72ch; }
     <p style="margin-top:16px;color:var(--ink-2)">Between 09:00 and 19:00 the model beats the best
     baseline by 7–16%. Overnight it does not: with four buses on a route and empty roads, looking up
     what usually happens at that stop is as good as gradient boosting. That is the honest shape of
-    the result, and it is the shape you would want — the model earns its keep exactly when a rider
+    the result, and it is the shape you would want. The model earns its keep exactly when a rider
     is standing in the rain caring about the answer.</p>
   </section>
 
@@ -399,7 +443,7 @@ footer p { max-width: 72ch; }
     </div>
     <p style="margin-top:16px;color:var(--ink-2)">On routes 049 and 100, persistence wins outright.
     Both are high-frequency trunk routes where buses bunch: when the vehicle in front is three
-    minutes down, the simplest possible signal — how late this bus already is — carries almost
+    minutes down, the simplest possible signal, how late this bus already is, carries almost
     everything, and the model's extra features add variance rather than information. Averages hide
     this. It is in the table because it is true.</p>
   </section>
@@ -414,8 +458,8 @@ footer p { max-width: 72ch; }
       <svg id="imp-chart" viewBox="0 0 900 400" role="img"
            aria-label="Feature importance: delay_t_minus_15 accounts for 44% of total split gain."></svg>
     </div>
-    <p style="margin-top:16px;color:var(--ink-2)"><code>delay_t_minus_15</code> — how late the bus
-    already was fifteen minutes out — carries 44% of the gain. That is the same signal the
+    <p style="margin-top:16px;color:var(--ink-2)"><code>delay_t_minus_15</code>, how late the bus
+    already was fifteen minutes out, carries 44% of the gain. That is the same signal the
     persistence baseline uses. The model's advantage is not a better signal; it is knowing when to
     trust that one, using how far into the route the bus is, what the stop normally does at this
     hour, and what the buses ahead of it are doing.</p>
@@ -431,7 +475,7 @@ footer p { max-width: 72ch; }
         <h3>It is fifteen trees</h3>
         <p>Training was configured for 800 boosting rounds. Early stopping halted at 64, with the
         best validation score at round 15. After that, training error kept falling while validation
-        error rose — the model was learning one specific fortnight, not how buses behave.</p>
+        error rose. The model was learning one specific fortnight, not how buses behave.</p>
       </div>
       <div class="note">
         <h3>One season</h3>
@@ -447,7 +491,7 @@ footer p { max-width: 72ch; }
       <div class="note">
         <h3>The tail is unpredictable</h3>
         <p>Half of predictions land within 72 seconds. The mean is 114 because of a minority of
-        buses that blow out past ten minutes — bridge lifts, collisions, driver changeovers. Nothing
+        buses that blow out past ten minutes: bridge lifts, collisions, driver changeovers. Nothing
         in a schedule feed can see those coming.</p>
       </div>
     </div>
@@ -458,7 +502,7 @@ footer p { max-width: 72ch; }
 <footer>
   <div class="shell">
     <p><strong style="color:var(--board-ink);font-family:var(--display);font-size:18px">TransitPulse BC</strong><br>
-    Streaming GTFS-Realtime ingestion, an S3 lakehouse, and an XGBoost delay model — provisioned by
+    Streaming GTFS-Realtime ingestion, an S3 lakehouse, and an XGBoost delay model, provisioned by
     Terraform, orchestrated with Step Functions and SageMaker Pipelines, and watched nightly by a
     read-only LLM operations agent.</p>
     <p style="font-family:var(--mono);font-size:11.5px;margin-top:18px">
@@ -494,7 +538,7 @@ footer p { max-width: 72ch; }
   function renderBoard(h) {
     var cells = [
       { k: "Model error", v: fmt(h.mae_model, 1), u: "s", n: "mean absolute error across " + h.n_scored.toLocaleString() + " held-out arrivals" },
-      { k: "Typical miss", v: fmt(h.p50_abs_error, 1), u: "s", n: "median — half of all predictions land inside this" },
+      { k: "Typical miss", v: fmt(h.p50_abs_error, 1), u: "s", n: "median. Half of all predictions land inside this" },
       { k: "Best baseline", v: fmt(h.mae_historical, 1), u: "s", n: "historical median for the stop, hour and day type" },
       { k: "Within 2 min", v: fmt(h.within_120s * 100, 1), u: "%", n: fmt(h.within_60s * 100, 1) + "% land within a single minute" }
     ];
@@ -578,6 +622,23 @@ footer p { max-width: 72ch; }
       if (s.peak) bits.push("peak");
       if (s.rain > 0) bits.push(s.rain.toFixed(1) + "mm rain");
       where.appendChild(el("div", "when", bits.join("  ·  ")));
+
+      /* What the two lookup baselines would have said for this same arrival, so
+         the comparison is visible on the row rather than only in the aggregate.
+         Either can be absent: persistence needs a snapshot 15 minutes out, and
+         the historical median needs 20 prior observations for this stop-hour. */
+      var versus = el("div", "versus");
+      [["persistence", s.persistence], ["historical", s.historical]].forEach(function (pair) {
+        var span = el("span");
+        if (pair[1] === null || pair[1] === undefined) {
+          span.appendChild(document.createTextNode(pair[0] + " n/a"));
+        } else {
+          span.appendChild(document.createTextNode(pair[0] + " said " + signed(pair[1]) + "s, off by "));
+          span.appendChild(el("b", null, fmt(Math.abs(pair[1] - s.actual)) + "s"));
+        }
+        versus.appendChild(span);
+      });
+      where.appendChild(versus);
       card.appendChild(where);
 
       var figs = el("div", "figs");
@@ -678,7 +739,7 @@ footer p { max-width: 72ch; }
     for (var h = 0; h <= 23; h += 3) {
       svg.appendChild(text(x(h), H - B + 20, String(h).padStart(2, "0"), "middle"));
     }
-    svg.appendChild(text((L + W - R) / 2, H - 8, "hour of day — Vancouver local time", "middle", 11));
+    svg.appendChild(text((L + W - R) / 2, H - 8, "hour of day, Vancouver local time", "middle", 11));
 
     function path(key, stroke, width, dash) {
       var d = rows.map(function (r, i) { return (i ? "L" : "M") + x(r.hour) + " " + y(r[key]); }).join(" ");
@@ -691,6 +752,66 @@ footer p { max-width: 72ch; }
     path("persistence", css("--warn"), 1.8);
     path("historical", css("--bad"), 1.8);
     path("model", css("--data"), 3);
+  }
+
+  /* ---------- signed error distribution ---------- */
+
+  function renderErrorChart() {
+    var svg = document.getElementById("err-chart");
+    var bins = DATA.error_histogram;
+    var W = 900, H = 300, L = 54, R = 14, T = 12, B = 46;
+    var max = Math.max.apply(null, bins.map(function (b) { return b.n; }));
+    var lo = bins[0].lo, hi = bins[bins.length - 1].hi;
+
+    function x(v) { return L + (v - lo) / (hi - lo) * (W - L - R); }
+    function y(n) { return T + (1 - n / max) * (H - T - B); }
+
+    var ns = "http://www.w3.org/2000/svg";
+    function node(tag, attrs) {
+      var e = document.createElementNS(ns, tag);
+      Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+      return e;
+    }
+    function text(tx, ty, str, anchor, size, fill) {
+      var e = node("text", { x: tx, y: ty, "text-anchor": anchor || "middle", "font-size": size || 11,
+        fill: fill || css("--muted"), "font-family": "IBM Plex Mono, monospace" });
+      e.textContent = str;
+      return e;
+    }
+
+    svg.textContent = "";
+
+    var step = Math.ceil(max / 4 / 10000) * 10000;
+    for (var n = 0; n <= max; n += step) {
+      svg.appendChild(node("line", { x1: L, x2: W - R, y1: y(n), y2: y(n),
+        stroke: css("--rule"), "stroke-width": 1 }));
+      svg.appendChild(text(L - 9, y(n) + 4, (n / 1000) + "k", "end"));
+    }
+    svg.appendChild(text(L - 44, T + 2, "arrivals", "start", 10));
+
+    var bw = (W - L - R) / bins.length;
+    bins.forEach(function (b) {
+      var mid = (b.lo + b.hi) / 2;
+      /* Colour by magnitude, matching the row cards: green inside a minute,
+         amber to three, red beyond. Sign is carried by position, not hue. */
+      var mag = Math.abs(mid);
+      var fill = mag <= 60 ? css("--good") : mag <= 180 ? css("--warn") : css("--bad");
+      svg.appendChild(node("rect", {
+        x: x(b.lo) + 0.6, y: y(b.n), width: Math.max(bw - 1.2, 1),
+        height: (H - B) - y(b.n), fill: fill, opacity: 0.85
+      }));
+    });
+
+    svg.appendChild(node("line", { x1: x(0), x2: x(0), y1: T, y2: H - B,
+      stroke: css("--ink"), "stroke-width": 1.5, "stroke-dasharray": "4 3" }));
+    svg.appendChild(text(x(0), T + 11, "exact", "middle", 10, css("--ink-2")));
+
+    [-600, -300, 0, 300, 600].forEach(function (v) {
+      svg.appendChild(text(x(v), H - B + 20, (v > 0 ? "+" : "") + v, "middle"));
+    });
+    svg.appendChild(text(x(-450), H - B + 38, "predicted too early", "middle", 10.5));
+    svg.appendChild(text(x(450), H - B + 38, "predicted too late", "middle", 10.5));
+    svg.appendChild(text(x(0), H - 4, "prediction minus actual, seconds", "middle", 11));
   }
 
   /* ---------- importance chart ---------- */
@@ -769,6 +890,7 @@ footer p { max-width: 72ch; }
     renderBars(data.headline);
     buildControls();
     renderResults();
+    renderErrorChart();
     renderHourChart();
     renderImportance();
     renderRouteTable();
@@ -784,7 +906,7 @@ footer p { max-width: 72ch; }
       document.getElementById("results").appendChild(
         el("div", "empty",
            "Could not load demo-data.json (" + err.message + "). Opening this file directly from " +
-           "disk blocks the request; serve the folder instead — python3 -m http.server — or view " +
+           "disk blocks the request. Serve the folder instead (python3 -m http.server), or view " +
            "it on GitHub Pages."));
     });
 
@@ -792,6 +914,7 @@ footer p { max-width: 72ch; }
   if (mq.addEventListener) {
     mq.addEventListener("change", function () {
       if (!DATA) return;
+      renderErrorChart();
       renderHourChart();
       renderImportance();
     });

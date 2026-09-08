@@ -98,7 +98,7 @@ def delay_distribution() -> None:
     late = df.loc[df["bucket"].str.contains("late"), "pct"].sum()
     ax.set_title(
         f"Arrival delay against the published schedule\n"
-        f"{total:,} stop arrivals — {late:.0f}% late, {early:.0f}% early",
+        f"{total:,} stop arrivals. {late:.0f}% late, {early:.0f}% early",
         loc="left",
         fontsize=12,
         fontweight="semibold",
@@ -139,7 +139,7 @@ def hourly_profile() -> None:
     ax2.plot(df["hour"], df["p90_delay"], color=S2, lw=2, marker="o", ms=4, label="90th percentile")
     ax2.plot(df["hour"], df["avg_delay"], color=S1, lw=2, marker="o", ms=4, label="mean")
     ax2.set_ylabel("delay (seconds)", fontsize=9)
-    ax2.set_xlabel("hour of day — Vancouver local time", fontsize=9)
+    ax2.set_xlabel("hour of day, Vancouver local time", fontsize=9)
     ax2.set_xticks(range(0, 24, 3), [f"{h:02d}" for h in range(0, 24, 3)])
     ax2.grid(axis="y")
     ax2.legend(frameon=False, fontsize=9, loc="upper left", labelcolor=INK2)
@@ -205,7 +205,7 @@ def model_vs_baselines() -> None:
     ax2.bar(df["hour"], gain, color=colors, width=0.66)
     ax2.axhline(0, color=AXIS, lw=0.8)
     ax2.set_ylabel("% better than best baseline", fontsize=9)
-    ax2.set_xlabel("hour of day — Vancouver local time", fontsize=9)
+    ax2.set_xlabel("hour of day, Vancouver local time", fontsize=9)
     ax2.set_xticks(range(0, 24, 3), [f"{h:02d}" for h in range(0, 24, 3)])
     ax2.grid(axis="y")
     strip(ax2)

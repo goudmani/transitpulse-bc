@@ -103,7 +103,7 @@ def render_status(col: facts.Collection, dep: facts.Deployment, cost: facts.Cost
             "exists. Phase 5 splits train/validation/test by time, which needs "
             f"{config.TARGET_COLLECTION_DAYS} distinct service days; "
             f"**{col.days} are collected**"
-            + (f", {col.remaining} to go" if col.remaining else " — Phase 5 is unblocked")
+            + (f", {col.remaining} to go" if col.remaining else ". Phase 5 is unblocked")
             + "."
         )
     else:
@@ -182,7 +182,7 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
         model_row = f"**{metrics['mae']:.1f}**"
         verdict = (
             f"The **XGBoost model reaches {metrics['mae']:.1f}s** on "
-            f"{metrics['n_test']:,} held-out arrivals — "
+            f"{metrics['n_test']:,} held-out arrivals. That is "
             f"{(1 - metrics['mae_ratio_vs_best_baseline']) * 100:.1f}% better than the "
             f"strongest baseline ({metrics['best_baseline']}, "
             f"{metrics['best_baseline_mae']:.1f}s) and "
@@ -206,8 +206,8 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
         verdict = (
             f"The strongest baseline is **{best_name}** at {best_mae:.1f}s, which "
             f"beats the printed timetable by {base.best_gain_pct:.1f}%. The registry "
-            f"gate is `mae_ratio_vs_best_baseline <= 0.92` — measured against "
-            f"whichever baseline wins, not an assumed one — so a model must reach "
+            f"gate is `mae_ratio_vs_best_baseline <= 0.92`, measured against "
+            f"whichever baseline wins rather than an assumed one, so a model must reach "
             f"**≤ {base.registry_gate_sec:.1f} seconds** to be registered at all."
         )
 
@@ -351,7 +351,7 @@ def check_prose_drift(text: str, fact_summary: str) -> str:
         if needle and needle.lower() not in " ".join(stripped.split()).lower():
             log.warning("dropping drift claim, quote not found in README: %r", needle)
             continue
-        out.append(f'- **{c.confidence}** — "{c.quote.strip()}"\n  {c.contradicts.strip()}')
+        out.append(f'- **{c.confidence}**: "{c.quote.strip()}"\n  {c.contradicts.strip()}')
     return "\n\n".join(out) if out else "NO DRIFT"
 
 
@@ -421,7 +421,7 @@ def run(skip_charts: bool = False, skip_drift: bool = False) -> dict:
         config.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         path = config.REPORTS_DIR / f"{config.run_date()}-docs-drift.md"
         path.write_text(
-            f"# README drift check — {config.run_date()}\n\n"
+            f"# README drift check, {config.run_date()}\n\n"
             f"Claims that appear to contradict live facts. **Not auto-corrected**: "
             f"a sentence is an argument, and rewriting one should be a decision.\n\n"
             f"{drift}\n\n---\n\nFacts at "

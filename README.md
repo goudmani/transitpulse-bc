@@ -15,11 +15,11 @@ its own operations report.
 
 | Stage | State |
 |---|---|
-| Ingestion, bronze, silver, gold | complete — 27 service days, then stopped |
+| Ingestion, bronze, silver, gold | complete, 27 service days, then stopped |
 | Nightly ETL | stopped; nothing left to process |
 | Nightly ops agent | running |
 | Training, evaluation, model registry | **run; model registered, PendingManualApproval** |
-| Inference endpoint, prediction API | infrastructure live, not deployed — see Known limitations |
+| Inference endpoint, prediction API | infrastructure live, not deployed (see Known limitations) |
 
 Collection ran 2026-08-11 to 2026-09-06 and produced **15,525,290 gold rows** across 27 service days. The training pipeline trained, evaluated against three baselines, passed the registry gate at `mae_ratio_vs_best_baseline = 0.8975`, and registered the model.
 
@@ -49,7 +49,7 @@ Over 15,525,290 labelled stop arrivals, 2026-08-11 to 2026-09-06. Computed over 
 | Historical median for route/stop/day-type/hour | **127.3** |
 | **XGBoost model** | **114.3** |
 
-The **XGBoost model reaches 114.3s** on 4,163,041 held-out arrivals — 10.2% better than the strongest baseline (historical, 127.3s) and 24.9% better than the printed timetable. The registry gate is `mae_ratio_vs_best_baseline <= 0.92`; it scored **0.8975** and was registered.
+The **XGBoost model reaches 114.3s** on 4,163,041 held-out arrivals. That is 10.2% better than the strongest baseline (historical, 127.3s) and 24.9% better than the printed timetable. The registry gate is `mae_ratio_vs_best_baseline <= 0.92`; it scored **0.8975** and was registered.
 <!-- agent:baselines:end -->
 
 | | |
@@ -63,12 +63,12 @@ The **XGBoost model reaches 114.3s** on 4,163,041 held-out arrivals — 10.2% be
 MAE is the headline because it is what the model optimises, but the median is
 the number a rider would recognise: **half of all predictions land within 72
 seconds of the true arrival delay.** The gap between the median (72s) and the
-mean (114s) is the fat tail — a minority of buses whose lateness has no signal
+mean (114s) is the fat tail: a minority of buses whose lateness has no signal
 in a schedule feed.
 
 ![Model versus baselines by hour of day](img/model_vs_baselines.png)
 
-The aggregate hides the real finding. **The model's edge is not uniform — it is
+The aggregate hides the real finding. **The model's edge is not uniform. It is
 concentrated in the hours that matter.** Between 09:00 and 19:00 it beats the
 best baseline by 7–16%, peaking at 16% through the afternoon. Outside those
 hours it is level with, or slightly worse than, simply looking up the historical
@@ -80,14 +80,14 @@ model earns its keep in congestion, which is exactly when a rider cares.
 
 ![Feature importance: delay_t_minus_15 dominates](img/feature_importance.png)
 
-**One feature carries 44% of the total split gain: `delay_t_minus_15`** — how
+**One feature carries 44% of the total split gain: `delay_t_minus_15`**, how
 late the bus already was fifteen minutes before it arrived. That is worth sitting
 with. The model's single strongest signal is the same information the persistence
 baseline uses, and its advantage comes from knowing *when to trust it*: how far
-into the route the bus is (`stop_sequence`, `shape_dist_traveled` — together 16%),
+into the route the bus is (`stop_sequence`, `shape_dist_traveled`, together 16%),
 what this stop normally looks like at this hour (`hist_median_delay`,
-`hist_p90_delay` — 10%), and what the buses ahead of it are doing
-(`prev_stop_delay`, `upstream_delay_same_trip`, `preceding_trip_delay` — 9%).
+`hist_p90_delay`, 10%), and what the buses ahead of it are doing
+(`prev_stop_delay`, `upstream_delay_same_trip`, `preceding_trip_delay`, 9%).
 
 The four weather features contribute almost nothing. Collected over 27 late-summer
 days in Vancouver, there was barely any weather to learn from.
@@ -99,7 +99,7 @@ that always passes is decoration.
 The gate is wired to whichever baseline is strongest, which turned out **not** to
 be persistence. On the held-out test week the historical median reaches 127.3s
 against persistence's 130.2s. Restricting both to the 3,489,305 rows that actually
-have a prior — so neither gets credit for the fallback — the gap widens: **126.1s
+have a prior, so neither gets credit for the fallback, the gap widens: **126.1s
 versus 131.5s**. Delay at a given stop is more a property of that stop at that
 hour than of the individual bus. Had the gate stayed on persistence, a model at
 125s would have registered while a lookup table beat it.
@@ -121,17 +121,17 @@ the future through the historical aggregates and makes every metric fraudulent.
 | test | 4,163,041 | 2026-08-31 → 09-06 |
 
 Two contiguous weeks held out, never shuffled. The split key is `service_date`,
-the GTFS service day — so a trip that departs at 23:40 and arrives at 00:20 falls
+the GTFS service day, so a trip that departs at 23:40 and arrives at 00:20 falls
 entirely on one side of the boundary rather than straddling it.
 
-The model is XGBoost with `objective: reg:absoluteerror` — the loss it is scored
-on, not a proxy for it. 26 features, `max_depth 8`, `eta 0.08`, up to 800 boosting
+The model is XGBoost with `objective: reg:absoluteerror`, the loss it is scored
+on rather than a proxy for it. 26 features, `max_depth 8`, `eta 0.08`, up to 800 boosting
 rounds with early stopping at 50.
 
 **It stopped at round 64, with the best validation score at round 15.** Fifteen
 trees. After that, training error kept falling while validation error rose: the
 model began learning the specific fortnight it was shown rather than how buses
-behave. With 7.2M training rows that is not a shortage of data — it is temporal
+behave. With 7.2M training rows that is not a shortage of data. It is temporal
 distribution shift, two different weeks of a city. Early stopping is what turned
 that from a silent overfit into a fifteen-tree model that generalises.
 
@@ -202,17 +202,17 @@ Volume and delay are plotted on separate stacked axes rather than a shared one,
 because a dual-axis chart lets you imply any correlation you like by sliding the
 scales.
 
-> **This chart found a bug — and this is the fixed version.** `hour_of_day` was
+> **This chart found a bug, and this is the fixed version.** `hour_of_day` was
 > derived from `observed_arrival_ts`, which is UTC, while `PEAK_HOURS = {7, 8, 15,
 > 16, 17}` was written for local hours: midnight, 1am and mid-morning in Vancouver.
-> Every arrival after 17:00 local — roughly 29% of rows, and the second-busiest
-> stretch of the day — was stamped with the following day's date, so `day_of_week`
-> and `is_weekend` flipped too. Meanwhile the serving path computed its hour from
+> Every arrival after 17:00 local was stamped with the following day's date, so
+> `day_of_week` and `is_weekend` flipped too. That is roughly 29% of rows, and the
+> second-busiest stretch of the day. Meanwhile the serving path computed its hour from
 > `now + LOCAL_OFFSET` before calling the same `is_peak_hour()`. Training read UTC,
 > serving read local: seven hours apart for the same bus.
 >
 > `gold_features.py` now re-derives all three features with
-> `from_utc_timestamp(..., "America/Vancouver")` — a real zone, not a fixed −7,
+> `from_utc_timestamp(..., "America/Vancouver")`, a real zone rather than a fixed −7,
 > because the collection window crosses the PDT/PST boundary. Gold was rebuilt for
 > all 27 days before the split was cut, so the model above never saw the bad
 > values. Written up as [ADR 005](docs/adr/005-timezone-boundaries.md), which
@@ -343,16 +343,16 @@ it watches is a bad trade. Details in [`docs/agent.md`](docs/agent.md).
 - **No endpoint is deployed.** The model is trained, evaluated and registered, but
   nothing serves it, and that is a decision rather than an omission. The online
   feature store is empty: the DynamoDB writer was disabled in August to cut cost,
-  so an endpoint would fall back to `DEFAULTS` for the four `hist_*` features —
-  15% of the model's total gain — and quietly return predictions worse than the
+  so an endpoint would fall back to `DEFAULTS` for the four `hist_*` features,
+  15% of the model's total gain, and quietly return predictions worse than the
   114.3s reported here. A demo that serves degraded predictions is worse than no
   demo. See [the static demo](https://goudmani.github.io/transit-pulse-bc/), which
   scores real held-out rows with the real artifact.
 - **Known training/serving skew, unresolved.** `src/serving/predict/features.py`
   uses a fixed `LOCAL_OFFSET = timedelta(hours=-7)` while training is DST-aware via
   `from_utc_timestamp(..., "America/Vancouver")`. Correct until 2 November, wrong
-  by an hour after it. `tests/test_feature_parity.py` fails on this by design —
-  it is the test doing its job, not a broken test.
+  by an hour after it. `tests/test_feature_parity.py` fails on this by design.
+  It is the test doing its job, not a broken test.
 - **The model is fifteen trees.** Early stopping halted at round 64 with the best
   iteration at 15, and `booster.predict()` uses all 64 by default rather than the
   best 15, so roughly a second of MAE is left on the table. Reported as measured.
