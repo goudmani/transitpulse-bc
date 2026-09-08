@@ -51,21 +51,15 @@ htmlcov/
 data/*
 !data/processed/
 data/processed/*
+!data/processed/*.csv
+!data/processed/evaluation.json
 weather.parquet
 *.parquet
 *.csv
 tests/fixtures/offline_sample.json
-
-# Working documents, kept local on purpose.
 docs/interview-brief.html
-docs/agent-interview.html
 docs/portfolio-brief.md
-
-# Re-included LAST, because the last matching pattern wins: the blanket *.csv
-# above would otherwise re-ignore these two however early they were negated.
-!data/processed/*.csv
-!data/processed/evaluation.json
-/Users/manikanthgoudgurujala/mds_ubc/transitpulse-bc/docs/agent-interview.html
+docs/agent-interview.html
 
 # --- os / editor ---
 .DS_Store
