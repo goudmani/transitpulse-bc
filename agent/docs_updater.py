@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import logging
 import os
 import re
@@ -121,8 +122,22 @@ def render_status(col: facts.Collection, dep: facts.Deployment, cost: facts.Cost
     return "\n".join(lines)
 
 
+def _evaluation() -> dict | None:
+    """The registered model's own test-set report, committed at
+    data/processed/evaluation.json by the training pipeline run.
+
+    Read from the repo rather than re-queried, so these figures survive teardown:
+    the numbers describe one specific model artifact on one specific split, and
+    re-deriving them from live data later would silently describe something else.
+    """
+    try:
+        return json.loads((CSV_DIR / "evaluation.json").read_text())["metrics"]
+    except (OSError, KeyError, ValueError):
+        return None
+
+
 def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
-    """The baseline MAE table. Every number here comes from query 3."""
+    """The baseline MAE table, plus the registered model's own test-set score."""
     if not base.n:
         return "Baseline figures unavailable: the baseline query returned no rows."
 
@@ -142,11 +157,36 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
         else "pending, needs ≥5 days of history"
     )
     best_name, best_mae = base.best
+    metrics = _evaluation()
+
+    if metrics:
+        model_row = f"**{metrics['mae']:.1f}**"
+        verdict = (
+            f"The **XGBoost model reaches {metrics['mae']:.1f}s** on "
+            f"{metrics['n_test']:,} held-out arrivals — "
+            f"{(1 - metrics['mae_ratio_vs_best_baseline']) * 100:.1f}% better than the "
+            f"strongest baseline ({metrics['best_baseline']}, "
+            f"{metrics['best_baseline_mae']:.1f}s) and "
+            f"{(1 - metrics['mae_ratio_vs_schedule']) * 100:.1f}% better than the "
+            f"printed timetable. The registry gate is "
+            f"`mae_ratio_vs_best_baseline <= 0.92`; it scored "
+            f"**{metrics['mae_ratio_vs_best_baseline']:.4f}** and was registered."
+        )
+    else:
+        model_row = "pending"
+        verdict = (
+            f"The strongest baseline is **{best_name}** at {best_mae:.1f}s, which "
+            f"beats the printed timetable by {base.best_gain_pct:.1f}%. The registry "
+            f"gate is `mae_ratio_vs_best_baseline <= 0.92` — measured against "
+            f"whichever baseline wins, not an assumed one — so a model must reach "
+            f"**≤ {base.registry_gate_sec:.1f} seconds** to be registered at all."
+        )
 
     return "\n".join(
         [
-            f"Over {base.n:,} labelled stop arrivals, {span}. {caveat} Figures come "
-            "from `sql/07_profile_queries.sql`.",
+            f"Over {base.n:,} labelled stop arrivals, {span}. "
+            f"{caveat} Baselines come from `sql/07_profile_queries.sql`; "
+            "the model figure comes from the pipeline's own evaluation step.",
             "",
             "| Predictor | MAE (seconds) |",
             "|---|---|",
@@ -154,13 +194,9 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
             f"| Persistence (bus stays as late as it currently is) | "
             f"**{base.mae_persistence:.1f}** |",
             f"| Historical median for route/stop/day-type/hour | {historical} |",
-            "| **XGBoost model** | pending, Phase 6 |",
+            f"| **XGBoost model** | {model_row} |",
             "",
-            f"The strongest of these is **{best_name}** at {best_mae:.1f}s, which "
-            f"beats the printed timetable by {base.best_gain_pct:.1f}%. The registry "
-            f"gate is `mae_ratio_vs_best_baseline <= 0.92` — measured against "
-            f"whichever baseline wins, not an assumed one — so a model must reach "
-            f"**≤ {base.registry_gate_sec:.1f} seconds** to be registered at all.",
+            verdict,
         ]
     )
 

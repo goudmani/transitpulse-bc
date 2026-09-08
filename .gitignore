@@ -43,13 +43,29 @@ __pycache__/
 htmlcov/
 
 # --- data / local scratch ---
-data/
+# Raw and intermediate data stays out of git -- but the small derived facts do
+# not. agent/docs_updater.py reads data/processed/evaluation.json to render the
+# README's model row, and scripts/plot_profile.py reads the two CSVs to draw the
+# charts. Ignoring them means the nightly docs run silently reverts the README to
+# "pending" and the figures cannot be reproduced from a fresh clone.
+data/*
+!data/processed/
+data/processed/*
 weather.parquet
 *.parquet
 *.csv
 tests/fixtures/offline_sample.json
+
+# Working documents, kept local on purpose.
 docs/interview-brief.html
+docs/agent-interview.html
 docs/portfolio-brief.md
+
+# Re-included LAST, because the last matching pattern wins: the blanket *.csv
+# above would otherwise re-ignore these two however early they were negated.
+!data/processed/*.csv
+!data/processed/evaluation.json
+/Users/manikanthgoudgurujala/mds_ubc/transitpulse-bc/docs/agent-interview.html
 
 # --- os / editor ---
 .DS_Store

@@ -11,25 +11,24 @@ its own operations report.
 ## Status
 
 <!-- agent:status:begin -->
-**As of 2026-09-07, the data half is in production and the model half is not.**
+**As of 2026-09-08, collection is complete and a model is registered.**
 
 | Stage | State |
 |---|---|
-| Ingestion, bronze, silver, gold | running continuously |
-| Nightly ETL | running continuously (last execution SUCCEEDED) |
+| Ingestion, bronze, silver, gold | complete — 27 service days, then stopped |
+| Nightly ETL | stopped; nothing left to process |
 | Nightly ops agent | running |
-| Training, evaluation, model registry | provisioned in Terraform, never run |
-| Inference endpoint, prediction API | infrastructure live, no model behind it |
+| Training, evaluation, model registry | **run; model registered, PendingManualApproval** |
+| Inference endpoint, prediction API | infrastructure live, not deployed — see Known limitations |
 
-Nothing is trained yet, so no model has been registered and no endpoint exists. Phase 5 splits train/validation/test by time, which needs 21 distinct service days; **27 are collected** — Phase 5 is unblocked.
+Collection ran 2026-08-11 to 2026-09-06 and produced **15,525,290 gold rows** across 27 service days. The training pipeline trained, evaluated against three baselines, passed the registry gate at `mae_ratio_vs_best_baseline = 0.8975`, and registered the model.
 
-Gross usage on 2026-09-06 was **$0.79**, a $0.82/day median over the last three days (≈$25/month at that rate).
+Gross usage on 2026-09-06 was **$0.79/day**. The whole training pipeline cost roughly **$0.15** as a one-off.
 <!-- agent:status:end -->
 
-The MAE figures below are **baselines computed from collected data**, not model
-results, and they are what the model will have to beat.
-
-Collection is deliberately paced rather than rushed. Progress: `make data`.
+Collection was deliberately paced rather than rushed: 27 days, because a
+time-based split needs enough distinct service days that the test week is a real
+week and not an artefact.
 
 > Figures in this README between `agent:*:begin` and `agent:*:end` markers are
 > regenerated daily from live queries by the docs agent
@@ -41,17 +40,57 @@ Collection is deliberately paced rather than rushed. Progress: `make data`.
 ### Baselines, measured
 
 <!-- agent:baselines:begin -->
-Over 15,357,297 labelled stop arrivals, 2026-08-11 to 2026-09-06. Computed over the full 27-day training window. Figures come from `sql/07_profile_queries.sql`.
+Over 15,525,290 labelled stop arrivals, 2026-08-11 to 2026-09-06. Computed over the full 27-day training window. Baselines come from `sql/07_profile_queries.sql`; the model figure comes from the pipeline's own evaluation step.
 
 | Predictor | MAE (seconds) |
 |---|---|
-| Published schedule (predict zero delay) | **155.1** |
-| Persistence (bus stays as late as it currently is) | **134.7** |
-| Historical median for route/stop/hour | see `sql/07_profile_queries.sql` query 4 |
-| **XGBoost model** | pending, Phase 6 |
+| Published schedule (predict zero delay) | **152.1** |
+| Persistence (bus stays as late as it currently is) | **130.2** |
+| Historical median for route/stop/day-type/hour | **127.3** |
+| **XGBoost model** | **114.3** |
 
-Persistence beats the printed timetable by 13.2%. The registry gate is `mae_ratio_vs_persistence <= 0.92`, so a model must reach **≤ 123.9 seconds** to be registered at all.
+The **XGBoost model reaches 114.3s** on 4,163,041 held-out arrivals — 10.2% better than the strongest baseline (historical, 127.3s) and 24.9% better than the printed timetable. The registry gate is `mae_ratio_vs_best_baseline <= 0.92`; it scored **0.8975** and was registered.
 <!-- agent:baselines:end -->
+
+| | |
+|---|---|
+| RMSE | 213.6s |
+| Median absolute error | **72.1s** |
+| 90th-percentile absolute error | 238.3s |
+| Predictions within 60s of actual | **43.4%** |
+| Predictions within 120s of actual | **69.6%** |
+
+MAE is the headline because it is what the model optimises, but the median is
+the number a rider would recognise: **half of all predictions land within 72
+seconds of the true arrival delay.** The gap between the median (72s) and the
+mean (114s) is the fat tail — a minority of buses whose lateness has no signal
+in a schedule feed.
+
+![Model versus baselines by hour of day](img/model_vs_baselines.png)
+
+The aggregate hides the real finding. **The model's edge is not uniform — it is
+concentrated in the hours that matter.** Between 09:00 and 19:00 it beats the
+best baseline by 7–16%, peaking at 16% through the afternoon. Outside those
+hours it is level with, or slightly worse than, simply looking up the historical
+median for that stop.
+
+That is the honest shape of the result: overnight, when a route is running four
+buses and traffic is empty, a lookup table is as good as gradient boosting. The
+model earns its keep in congestion, which is exactly when a rider cares.
+
+![Feature importance: delay_t_minus_15 dominates](img/feature_importance.png)
+
+**One feature carries 44% of the total split gain: `delay_t_minus_15`** — how
+late the bus already was fifteen minutes before it arrived. That is worth sitting
+with. The model's single strongest signal is the same information the persistence
+baseline uses, and its advantage comes from knowing *when to trust it*: how far
+into the route the bus is (`stop_sequence`, `shape_dist_traveled` — together 16%),
+what this stop normally looks like at this hour (`hist_median_delay`,
+`hist_p90_delay` — 10%), and what the buses ahead of it are doing
+(`prev_stop_delay`, `upstream_delay_same_trip`, `preceding_trip_delay` — 9%).
+
+The four weather features contribute almost nothing. Collected over 27 late-summer
+days in Vancouver, there was barely any weather to learn from.
 
 "A bus four minutes late tends to stay four minutes late" is a hard baseline, and
 a model that only ties it is a real finding rather than a failure to hide. A gate
@@ -72,6 +111,29 @@ day five, and null for 16% of test rows even now.
 
 All measured on a time-based hold-out split, never random. A random split leaks
 the future through the historical aggregates and makes every metric fraudulent.
+
+### How the split and the model were built
+
+| | rows | service dates |
+|---|---|---|
+| train | 7,233,823 | 2026-08-11 → 08-23 |
+| validation | 4,128,426 | 2026-08-24 → 08-30 |
+| test | 4,163,041 | 2026-08-31 → 09-06 |
+
+Two contiguous weeks held out, never shuffled. The split key is `service_date`,
+the GTFS service day — so a trip that departs at 23:40 and arrives at 00:20 falls
+entirely on one side of the boundary rather than straddling it.
+
+The model is XGBoost with `objective: reg:absoluteerror` — the loss it is scored
+on, not a proxy for it. 26 features, `max_depth 8`, `eta 0.08`, up to 800 boosting
+rounds with early stopping at 50.
+
+**It stopped at round 64, with the best validation score at round 15.** Fifteen
+trees. After that, training error kept falling while validation error rose: the
+model began learning the specific fortnight it was shown rather than how buses
+behave. With 7.2M training rows that is not a shortage of data — it is temporal
+distribution shift, two different weeks of a city. Early stopping is what turned
+that from a silent overfit into a fifteen-tree model that generalises.
 
 ## Architecture
 
@@ -116,14 +178,15 @@ Decisions and their trade-offs are recorded in `docs/adr/`.
 15,506,255 stop arrivals over 27 days of collection (2026-08-11 to 2026-09-06), label completeness 0.990.
 <!-- agent:dataprofile:end -->
 
-The charts below are regenerated daily from
-[`sql/07_profile_queries.sql`](sql/07_profile_queries.sql); run
-`python scripts/plot_profile.py` to redraw them by hand.
+The charts below are drawn by `python scripts/plot_profile.py` from the CSVs in
+`data/processed/`, which `scripts/build_demo_data.py` regenerates from the same
+held-out split the model was scored on. One source of numbers for the charts, the
+metrics and the demo page.
 
-![Arrival delay distribution: 40% late, 37% on time, 23% early](img/delay_distribution.png)
+![Arrival delay distribution: 42% late, 38% on time, 21% early](img/delay_distribution.png)
 
 Buses run late more often than early, but the distribution is wide in both
-directions: 23% of arrivals are more than a minute *ahead* of schedule. That is
+directions: 21% of arrivals are more than a minute *ahead* of schedule. That is
 why the model predicts signed delay rather than lateness, and why `clamp_delay()`
 has a floor of −1800 seconds rather than zero.
 
@@ -139,12 +202,26 @@ Volume and delay are plotted on separate stacked axes rather than a shared one,
 because a dual-axis chart lets you imply any correlation you like by sliding the
 scales.
 
-> **This chart found a bug.** `hour_of_day` is derived from `observed_arrival_ts`,
-> which is UTC, but `PEAK_HOURS = {7, 8, 15, 16, 17}` was written for local hours:
-> midnight, 1am, and mid-morning in Vancouver. Meanwhile the serving path computes
-> its hour from `now + LOCAL_OFFSET` before calling the same `is_peak_hour()`.
-> Training reads UTC, serving reads local: seven hours apart for the same bus.
-> Textbook training/serving skew, caught by plotting the data rather than by a test.
+> **This chart found a bug — and this is the fixed version.** `hour_of_day` was
+> derived from `observed_arrival_ts`, which is UTC, while `PEAK_HOURS = {7, 8, 15,
+> 16, 17}` was written for local hours: midnight, 1am and mid-morning in Vancouver.
+> Every arrival after 17:00 local — roughly 29% of rows, and the second-busiest
+> stretch of the day — was stamped with the following day's date, so `day_of_week`
+> and `is_weekend` flipped too. Meanwhile the serving path computed its hour from
+> `now + LOCAL_OFFSET` before calling the same `is_peak_hour()`. Training read UTC,
+> serving read local: seven hours apart for the same bus.
+>
+> `gold_features.py` now re-derives all three features with
+> `from_utc_timestamp(..., "America/Vancouver")` — a real zone, not a fixed −7,
+> because the collection window crosses the PDT/PST boundary. Gold was rebuilt for
+> all 27 days before the split was cut, so the model above never saw the bad
+> values. Written up as [ADR 005](docs/adr/005-timezone-boundaries.md), which
+> treats four separate defects as one pattern: **a timestamp is not a time until
+> you say where it is.**
+>
+> It was caught by plotting the data, not by a test. The earlier version of this
+> chart showed a bus network with no overnight trough, which is not a thing that
+> exists.
 
 ## Repository layout
 
@@ -263,10 +340,26 @@ it watches is a bad trade. Details in [`docs/agent.md`](docs/agent.md).
 
 ## Known limitations
 
-- **No model exists yet.** Training, evaluation, the registry gate and the
-  endpoint are written and provisioned but have never run, because a time-based
-  split needs 21 service days and 2 are collected. Every number under Results is
-  a baseline, not a result.
+- **No endpoint is deployed.** The model is trained, evaluated and registered, but
+  nothing serves it, and that is a decision rather than an omission. The online
+  feature store is empty: the DynamoDB writer was disabled in August to cut cost,
+  so an endpoint would fall back to `DEFAULTS` for the four `hist_*` features —
+  15% of the model's total gain — and quietly return predictions worse than the
+  114.3s reported here. A demo that serves degraded predictions is worse than no
+  demo. See [the static demo](https://goudmani.github.io/transit-pulse-bc/), which
+  scores real held-out rows with the real artifact.
+- **Known training/serving skew, unresolved.** `src/serving/predict/features.py`
+  uses a fixed `LOCAL_OFFSET = timedelta(hours=-7)` while training is DST-aware via
+  `from_utc_timestamp(..., "America/Vancouver")`. Correct until 2 November, wrong
+  by an hour after it. `tests/test_feature_parity.py` fails on this by design —
+  it is the test doing its job, not a broken test.
+- **The model is fifteen trees.** Early stopping halted at round 64 with the best
+  iteration at 15, and `booster.predict()` uses all 64 by default rather than the
+  best 15, so roughly a second of MAE is left on the table. Reported as measured.
+- **27 days is one season.** Collected 11 August to 6 September: no snow, no ice,
+  no winter darkness, one long weekend. The four weather features contribute
+  almost nothing to the model because there was almost no weather. A model trained
+  here would need retraining before it could be trusted in January.
 - The SageMaker execution role uses `AmazonSageMakerFullAccess` for development.
   A production deployment would scope this down.
 - One Kinesis shard caps writes at 1,000 records/sec. At ~16,000 rows per poll the

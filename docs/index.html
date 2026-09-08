@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TransitPulse BC</title>
+<meta name="description" content="A bus delay model scored against three baselines on 4.16 million held-out arrivals in Metro Vancouver.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f7f9fa;
+  --board: #16202b;
+  --board-ink: #eaf0f6;
+  --ink: #12181f;
+  --ink-2: #46545f;
+  --muted: #78868f;
+  --rule: #d8dfe5;
+  --rule-strong: #b9c4cd;
+  --flag: #f5c518;
+  --flag-ink: #2a2000;
+  --data: #0b5cd5;
+  --data-soft: #dbe6fb;
+  --good: #147a56;
+  --warn: #b5730a;
+  --bad: #c0342b;
+  --good-soft: #d8efe5;
+  --warn-soft: #fbecd2;
+  --bad-soft: #f9dedb;
+
+  --display: "Barlow Condensed", "Haettenschweiler", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --shell: 1140px;
+  --gap: 22px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0e151c;
+    --surface: #151f28;
+    --surface-2: #1b2732;
+    --board: #0a1118;
+    --board-ink: #e8eff5;
+    --ink: #e9eff4;
+    --ink-2: #a9b7c2;
+    --muted: #7d8c97;
+    --rule: #263440;
+    --rule-strong: #37495a;
+    --flag: #f7cf3c;
+    --flag-ink: #241b00;
+    --data: #6aa4f7;
+    --data-soft: #1b3050;
+    --good: #4cc494;
+    --warn: #e0a641;
+    --bad: #f0736a;
+    --good-soft: #123527;
+    --warn-soft: #34260d;
+    --bad-soft: #3a1d1a;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0e151c;
+  --surface: #151f28;
+  --surface-2: #1b2732;
+  --board: #0a1118;
+  --board-ink: #e8eff5;
+  --ink: #e9eff4;
+  --ink-2: #a9b7c2;
+  --muted: #7d8c97;
+  --rule: #263440;
+  --rule-strong: #37495a;
+  --flag: #f7cf3c;
+  --flag-ink: #241b00;
+  --data: #6aa4f7;
+  --data-soft: #1b3050;
+  --good: #4cc494;
+  --warn: #e0a641;
+  --bad: #f0736a;
+  --good-soft: #123527;
+  --warn-soft: #34260d;
+  --bad-soft: #3a1d1a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell { max-width: var(--shell); margin: 0 auto; padding: 0 20px; }
+
+h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+h2 { font-size: 30px; line-height: 1.1; }
+h3 { font-size: 21px; line-height: 1.2; }
+p { margin: 0 0 0.9em; max-width: 66ch; }
+a { color: var(--data); }
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---------- masthead: a bus stop flag ---------- */
+
+.masthead { background: var(--board); color: var(--board-ink); padding: 0 0 6px; }
+.masthead-inner { display: flex; gap: 26px; align-items: flex-start; padding: 30px 20px 26px; max-width: var(--shell); margin: 0 auto; }
+
+.flag {
+  flex: none;
+  width: 74px;
+  background: var(--flag);
+  color: var(--flag-ink);
+  border-radius: 5px;
+  padding: 9px 0 11px;
+  text-align: center;
+  font-family: var(--display);
+  line-height: 1;
+}
+.flag .glyph { font-size: 38px; font-weight: 700; display: block; }
+.flag .word { font-size: 12px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; display: block; margin-top: 4px; }
+.flag .pole { display: block; width: 6px; height: 26px; background: var(--flag); margin: 0 auto; }
+
+.masthead h1 { font-size: clamp(38px, 6vw, 58px); line-height: 0.95; color: var(--board-ink); }
+.masthead .sub { font-size: 17px; color: #a8b8c6; margin: 10px 0 0; max-width: 60ch; }
+.masthead .meta { font-family: var(--mono); font-size: 11.5px; color: #7f92a2; margin-top: 14px; letter-spacing: 0.02em; }
+.masthead .meta a { color: #9fc2f5; }
+
+/* ---------- departure board ---------- */
+
+.board { background: var(--board); padding-bottom: 26px; }
+.board-rows {
+  max-width: var(--shell); margin: 0 auto; padding: 0 20px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 1px;
+  background: #24313e; border: 1px solid #24313e; border-radius: 6px; overflow: hidden;
+}
+.board-cell { background: var(--board); padding: 15px 16px 14px; }
+.board-cell .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: #7f92a2; }
+.board-cell .v { font-family: var(--display); font-size: 40px; font-weight: 700; line-height: 1; color: var(--flag); margin-top: 7px; font-variant-numeric: tabular-nums; }
+.board-cell .v small { font-size: 17px; font-weight: 600; color: #b9c8d4; margin-left: 2px; }
+.board-cell .n { font-size: 12.5px; color: #93a5b3; margin-top: 6px; line-height: 1.35; }
+
+/* ---------- sections ---------- */
+
+section { padding: 46px 0; }
+section + section { border-top: 1px solid var(--rule); }
+.section-head { margin-bottom: 22px; }
+.section-head h2 { margin-top: 6px; }
+.section-head p { color: var(--ink-2); margin-top: 10px; }
+
+/* ---------- baseline comparison ---------- */
+
+.bars { display: flex; flex-direction: column; gap: 11px; margin: 4px 0 20px; }
+.bar-row { display: grid; grid-template-columns: 190px 1fr 74px; gap: 14px; align-items: center; }
+.bar-row .label { font-size: 13.5px; color: var(--ink-2); text-align: right; }
+.bar-row.win .label { color: var(--ink); font-weight: 600; }
+.bar-track { background: var(--surface-2); border-radius: 3px; height: 30px; position: relative; overflow: hidden; border: 1px solid var(--rule); }
+.bar-fill { height: 100%; background: var(--rule-strong); }
+.bar-row.win .bar-fill { background: var(--data); }
+.bar-row .num { font-family: var(--mono); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar-row.win .num { color: var(--data); }
+
+/* ---------- explorer ---------- */
+
+.explorer { display: grid; grid-template-columns: 268px 1fr; gap: var(--gap); align-items: start; }
+@media (max-width: 860px) { .explorer { grid-template-columns: 1fr; } }
+
+.rail {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 18px 18px 20px; position: sticky; top: 16px;
+}
+.rail .field { margin-bottom: 17px; }
+.rail label { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.rail select, .rail input[type="range"] { width: 100%; }
+.rail select {
+  font-family: var(--body); font-size: 14px; padding: 8px 9px; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--rule-strong); border-radius: 5px;
+}
+.rail .readout { font-family: var(--mono); font-size: 13px; color: var(--ink); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-family: var(--body); font-size: 12.5px; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--rule-strong); color: var(--ink-2);
+}
+.chip[aria-pressed="true"] { background: var(--data); border-color: var(--data); color: #fff; font-weight: 500; }
+.rail .count { font-family: var(--mono); font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 13px; margin-top: 4px; }
+
+.results { display: flex; flex-direction: column; gap: 9px; }
+
+.arrival {
+  background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--rule-strong);
+  border-radius: 6px; padding: 13px 15px;
+  display: grid; grid-template-columns: 58px 1fr auto; gap: 15px; align-items: center;
+}
+.arrival.e-good { border-left-color: var(--good); }
+.arrival.e-warn { border-left-color: var(--warn); }
+.arrival.e-bad  { border-left-color: var(--bad); }
+
+.badge {
+  background: var(--board); color: var(--flag); border-radius: 4px; text-align: center;
+  font-family: var(--display); font-weight: 700; font-size: 25px; line-height: 1;
+  padding: 8px 4px 7px; font-variant-numeric: tabular-nums;
+}
+.arrival .where { min-width: 0; }
+.arrival .stop { font-size: 14px; font-weight: 500; }
+.arrival .when { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.arrival .figs { display: flex; gap: 16px; text-align: right; }
+.fig .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.fig .v { font-family: var(--mono); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.fig.pred .v { color: var(--data); }
+.fig.err .v.e-good { color: var(--good); }
+.fig.err .v.e-warn { color: var(--warn); }
+.fig.err .v.e-bad  { color: var(--bad); }
+@media (max-width: 620px) {
+  .arrival { grid-template-columns: 50px 1fr; }
+  .arrival .figs { grid-column: 1 / -1; justify-content: flex-start; text-align: left; }
+}
+
+.empty { background: var(--surface); border: 1px dashed var(--rule-strong); border-radius: 6px; padding: 30px; text-align: center; color: var(--muted); }
+
+/* ---------- charts ---------- */
+
+.chart-wrap { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 20px 18px 14px; overflow-x: auto; }
+.chart-wrap svg { display: block; min-width: 560px; width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* ---------- tables ---------- */
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+th, td { padding: 10px 14px; text-align: right; border-bottom: 1px solid var(--rule); }
+th:first-child, td:first-child { text-align: left; }
+thead th { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+tbody tr:last-child td { border-bottom: none; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.best { color: var(--data); font-weight: 600; }
+td.lost { color: var(--bad); }
+
+/* ---------- notes ---------- */
+
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: var(--gap); }
+.note { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px 19px 6px; }
+.note h3 { font-size: 18px; margin-bottom: 8px; }
+.note p { font-size: 14px; color: var(--ink-2); }
+
+.callout { border-left: 3px solid var(--flag); background: var(--surface-2); padding: 15px 18px 4px; border-radius: 0 6px 6px 0; }
+.callout p { font-size: 14.5px; }
+
+footer { background: var(--board); color: #93a5b3; padding: 30px 0 40px; font-size: 13.5px; }
+footer a { color: #9fc2f5; }
+footer p { max-width: 72ch; }
+
+:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="flag" aria-hidden="true">
+      <span class="glyph">◧</span>
+      <span class="word">Stop</span>
+      <span class="pole"></span>
+    </div>
+    <div>
+      <h1>TransitPulse BC</h1>
+      <p class="sub">How late will this bus actually be? A gradient-boosted model, scored against
+      three baselines on 4.16&nbsp;million Metro Vancouver arrivals it was never shown.</p>
+      <p class="meta">
+        Held-out week 2026-08-31 → 09-06 · trained on 7.23M arrivals from 2026-08-11 → 08-23 ·
+        <a href="https://github.com/goudmani/transit-pulse-bc">source on GitHub</a>
+      </p>
+    </div>
+  </div>
+</header>
+
+<div class="board">
+  <div class="board-rows" id="board"></div>
+</div>
+
+<main class="shell">
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">The result</div>
+      <h2>It beats every simpler predictor — by 10%</h2>
+      <p>Mean absolute error, in seconds, on the same held-out arrivals. Lower is better.
+      A model that cannot beat a lookup table has not earned the compute it cost.</p>
+    </div>
+    <div class="bars" id="bars"></div>
+    <div class="callout">
+      <p><strong>The strongest baseline was not the obvious one.</strong> The project assumed
+      persistence — "a bus four minutes late stays four minutes late" — would be the bar to clear.
+      It wasn't. The historical median for that stop, at that hour, on that type of day is better:
+      127.3s against 130.2s. The registry gate was rewired to measure against whichever baseline
+      actually wins, because a gate pointed at the wrong one would have passed a model a lookup
+      table already beats.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Explore</div>
+      <h2>Real arrivals, real predictions</h2>
+      <p>Every row below is an actual bus arrival from the held-out week, scored by the registered
+      model artifact. Nothing here is simulated — the prediction is what the model said, and
+      <em>actual</em> is what the bus did.</p>
+    </div>
+    <div class="explorer">
+      <aside class="rail">
+        <div class="field">
+          <label for="f-route">Route</label>
+          <select id="f-route"></select>
+        </div>
+        <div class="field">
+          <label for="f-hour">Hour of day</label>
+          <input type="range" id="f-hour" min="-1" max="23" value="-1" step="1">
+          <div class="readout" id="hour-readout">any hour</div>
+        </div>
+        <div class="field">
+          <label>Day type</label>
+          <div class="chips" id="f-day">
+            <button class="chip" type="button" data-day="any" aria-pressed="true">Any</button>
+            <button class="chip" type="button" data-day="0" aria-pressed="false">Weekday</button>
+            <button class="chip" type="button" data-day="1" aria-pressed="false">Weekend</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Sort by</label>
+          <div class="chips" id="f-sort">
+            <button class="chip" type="button" data-sort="sample" aria-pressed="true">As sampled</button>
+            <button class="chip" type="button" data-sort="best" aria-pressed="false">Closest calls</button>
+            <button class="chip" type="button" data-sort="worst" aria-pressed="false">Biggest misses</button>
+            <button class="chip" type="button" data-sort="late" aria-pressed="false">Latest buses</button>
+          </div>
+          <div class="readout" style="margin-top:8px;font-size:11.5px;color:var(--muted)">
+            Default order is unsorted, so the first rows are a fair sample rather than the best ones.
+          </div>
+        </div>
+        <div class="count" id="filter-count"></div>
+      </aside>
+      <div class="results" id="results"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Where it wins</div>
+      <h2>The advantage is congestion, not the clock</h2>
+      <p>Mean absolute error by hour of day, Vancouver local time. The gap between the blue line
+      and the best grey one is the whole value of the model.</p>
+    </div>
+    <div class="chart-wrap">
+      <svg id="hour-chart" viewBox="0 0 900 340" role="img"
+           aria-label="Mean absolute error by hour of day: the model leads the baselines most strongly between 9am and 7pm."></svg>
+    </div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--data);height:4px"></i> XGBoost</span>
+      <span><i class="swatch" style="background:var(--bad)"></i> historical median</span>
+      <span><i class="swatch" style="background:var(--warn)"></i> persistence</span>
+      <span><i class="swatch" style="background:var(--muted)"></i> published schedule</span>
+    </div>
+    <p style="margin-top:16px;color:var(--ink-2)">Between 09:00 and 19:00 the model beats the best
+    baseline by 7–16%. Overnight it does not: with four buses on a route and empty roads, looking up
+    what usually happens at that stop is as good as gradient boosting. That is the honest shape of
+    the result, and it is the shape you would want — the model earns its keep exactly when a rider
+    is standing in the rain caring about the answer.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Where it loses</div>
+      <h2>Two of the twelve busiest routes beat it</h2>
+      <p>Mean absolute error per route, in seconds. Blue marks the winner on each row.</p>
+    </div>
+    <div class="table-wrap">
+      <table id="route-table">
+        <thead><tr><th>Route</th><th>Arrivals</th><th>XGBoost</th><th>Historical</th><th>Persistence</th><th>Schedule</th><th>Mean delay</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p style="margin-top:16px;color:var(--ink-2)">On routes 049 and 100, persistence wins outright.
+    Both are high-frequency trunk routes where buses bunch: when the vehicle in front is three
+    minutes down, the simplest possible signal — how late this bus already is — carries almost
+    everything, and the model's extra features add variance rather than information. Averages hide
+    this. It is in the table because it is true.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">What it learned</div>
+      <h2>One feature does most of the work</h2>
+      <p>Share of total split gain across 26 features.</p>
+    </div>
+    <div class="chart-wrap">
+      <svg id="imp-chart" viewBox="0 0 900 400" role="img"
+           aria-label="Feature importance: delay_t_minus_15 accounts for 44% of total split gain."></svg>
+    </div>
+    <p style="margin-top:16px;color:var(--ink-2)"><code>delay_t_minus_15</code> — how late the bus
+    already was fifteen minutes out — carries 44% of the gain. That is the same signal the
+    persistence baseline uses. The model's advantage is not a better signal; it is knowing when to
+    trust that one, using how far into the route the bus is, what the stop normally does at this
+    hour, and what the buses ahead of it are doing.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Honest notes</div>
+      <h2>What this does not show</h2>
+    </div>
+    <div class="notes">
+      <div class="note">
+        <h3>It is fifteen trees</h3>
+        <p>Training was configured for 800 boosting rounds. Early stopping halted at 64, with the
+        best validation score at round 15. After that, training error kept falling while validation
+        error rose — the model was learning one specific fortnight, not how buses behave.</p>
+      </div>
+      <div class="note">
+        <h3>One season</h3>
+        <p>27 days in late summer. No snow, no ice, no winter darkness. The four weather features
+        contribute almost nothing because there was almost no weather to learn from.</p>
+      </div>
+      <div class="note">
+        <h3>No live endpoint</h3>
+        <p>The online feature store was switched off to cut cost, so a live endpoint would fall back
+        to defaults for the four historical features and quietly serve worse predictions than the
+        114.3s reported here. A demo that lies is worse than no demo.</p>
+      </div>
+      <div class="note">
+        <h3>The tail is unpredictable</h3>
+        <p>Half of predictions land within 72 seconds. The mean is 114 because of a minority of
+        buses that blow out past ten minutes — bridge lifts, collisions, driver changeovers. Nothing
+        in a schedule feed can see those coming.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="shell">
+    <p><strong style="color:var(--board-ink);font-family:var(--display);font-size:18px">TransitPulse BC</strong><br>
+    Streaming GTFS-Realtime ingestion, an S3 lakehouse, and an XGBoost delay model — provisioned by
+    Terraform, orchestrated with Step Functions and SageMaker Pipelines, and watched nightly by a
+    read-only LLM operations agent.</p>
+    <p style="font-family:var(--mono);font-size:11.5px;margin-top:18px">
+      Transit data from TransLink, used under their Open API Terms of Use. Weather from Open-Meteo.
+      This page is an independent portfolio project and is not affiliated with or endorsed by TransLink.<br>
+      <a href="https://github.com/goudmani/transit-pulse-bc">github.com/goudmani/transit-pulse-bc</a>
+    </p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var DATA = null;
+  var state = { route: "any", hour: -1, day: "any", sort: "sample" };
+
+  function css(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  function fmt(n, d) { return Number(n).toFixed(d === undefined ? 0 : d); }
+  function signed(n) { return (n > 0 ? "+" : "") + fmt(n); }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function errClass(e) { return e <= 60 ? "e-good" : e <= 180 ? "e-warn" : "e-bad"; }
+
+  /* ---------- departure board ---------- */
+
+  function renderBoard(h) {
+    var cells = [
+      { k: "Model error", v: fmt(h.mae_model, 1), u: "s", n: "mean absolute error across " + h.n_scored.toLocaleString() + " held-out arrivals" },
+      { k: "Typical miss", v: fmt(h.p50_abs_error, 1), u: "s", n: "median — half of all predictions land inside this" },
+      { k: "Best baseline", v: fmt(h.mae_historical, 1), u: "s", n: "historical median for the stop, hour and day type" },
+      { k: "Within 2 min", v: fmt(h.within_120s * 100, 1), u: "%", n: fmt(h.within_60s * 100, 1) + "% land within a single minute" }
+    ];
+    var board = document.getElementById("board");
+    cells.forEach(function (c) {
+      var cell = el("div", "board-cell");
+      cell.appendChild(el("div", "k", c.k));
+      var v = el("div", "v", c.v);
+      v.appendChild(el("small", null, c.u));
+      cell.appendChild(v);
+      cell.appendChild(el("div", "n", c.n));
+      board.appendChild(cell);
+    });
+  }
+
+  /* ---------- baseline bars ---------- */
+
+  function renderBars(h) {
+    var rows = [
+      { label: "Published schedule", v: h.mae_schedule, note: "predict zero delay" },
+      { label: "Persistence", v: h.mae_persistence, note: "stays as late as it is now" },
+      { label: "Historical median", v: h.mae_historical, note: "this stop, this hour" },
+      { label: "XGBoost model", v: h.mae_model, win: true }
+    ];
+    var max = Math.max.apply(null, rows.map(function (r) { return r.v; }));
+    var host = document.getElementById("bars");
+    rows.forEach(function (r) {
+      var row = el("div", "bar-row" + (r.win ? " win" : ""));
+      row.appendChild(el("div", "label", r.label));
+      var track = el("div", "bar-track");
+      var fill = el("div", "bar-fill");
+      fill.style.width = (r.v / max * 100) + "%";
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el("div", "num", fmt(r.v, 1) + "s"));
+      host.appendChild(row);
+    });
+  }
+
+  /* ---------- explorer ---------- */
+
+  function filtered() {
+    return DATA.samples.filter(function (s) {
+      if (state.route !== "any" && s.route !== state.route) return false;
+      if (state.hour >= 0 && s.hour !== state.hour) return false;
+      if (state.day !== "any" && String(s.weekend) !== state.day) return false;
+      return true;
+    });
+  }
+
+  function renderResults() {
+    var rows = filtered().slice();
+    if (state.sort === "best") {
+      rows.sort(function (a, b) { return Math.abs(a.pred - a.actual) - Math.abs(b.pred - b.actual); });
+    } else if (state.sort === "worst") {
+      rows.sort(function (a, b) { return Math.abs(b.pred - b.actual) - Math.abs(a.pred - a.actual); });
+    } else if (state.sort === "late") {
+      rows.sort(function (a, b) { return b.actual - a.actual; });
+    }
+    /* "sample" leaves the stratified sample order untouched. */
+
+    var host = document.getElementById("results");
+    host.textContent = "";
+    document.getElementById("filter-count").textContent =
+      rows.length + " of " + DATA.samples.length + " sampled arrivals match";
+
+    if (!rows.length) {
+      host.appendChild(el("div", "empty", "No arrivals match those filters. Try widening the hour or day type."));
+      return;
+    }
+
+    rows.slice(0, 40).forEach(function (s) {
+      var err = Math.abs(s.pred - s.actual);
+      var card = el("div", "arrival " + errClass(err));
+
+      card.appendChild(el("div", "badge", s.route));
+
+      var where = el("div", "where");
+      where.appendChild(el("div", "stop", "Stop " + s.stop + " · stop " + s.seq + " of " + (s.seq + s.remaining)));
+      var bits = [s.date, String(s.hour).padStart(2, "0") + ":00", s.weekend ? "weekend" : "weekday"];
+      if (s.peak) bits.push("peak");
+      if (s.rain > 0) bits.push(s.rain.toFixed(1) + "mm rain");
+      where.appendChild(el("div", "when", bits.join("  ·  ")));
+      card.appendChild(where);
+
+      var figs = el("div", "figs");
+      [
+        { k: "Predicted", v: signed(s.pred) + "s", cls: "pred" },
+        { k: "Actual", v: signed(s.actual) + "s", cls: "act" },
+        { k: "Off by", v: fmt(err) + "s", cls: "err", ec: errClass(err) }
+      ].forEach(function (f) {
+        var g = el("div", "fig " + f.cls);
+        g.appendChild(el("div", "k", f.k));
+        g.appendChild(el("div", "v " + (f.ec || ""), f.v));
+        figs.appendChild(g);
+      });
+      card.appendChild(figs);
+      host.appendChild(card);
+    });
+  }
+
+  function buildControls() {
+    var routes = {};
+    DATA.samples.forEach(function (s) { routes[s.route] = (routes[s.route] || 0) + 1; });
+    var names = Object.keys(routes).sort(function (a, b) { return routes[b] - routes[a]; });
+
+    var sel = document.getElementById("f-route");
+    var any = el("option", null, "All routes");
+    any.value = "any";
+    sel.appendChild(any);
+    names.slice(0, 30).forEach(function (r) {
+      var o = el("option", null, "Route " + r + "  (" + routes[r] + ")");
+      o.value = r;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", function () { state.route = sel.value; renderResults(); });
+
+    var hour = document.getElementById("f-hour");
+    var readout = document.getElementById("hour-readout");
+    hour.addEventListener("input", function () {
+      state.hour = Number(hour.value);
+      readout.textContent = state.hour < 0
+        ? "any hour"
+        : String(state.hour).padStart(2, "0") + ":00 – " + String(state.hour).padStart(2, "0") + ":59";
+      renderResults();
+    });
+
+    function chips(id, key) {
+      var group = document.getElementById(id);
+      group.addEventListener("click", function (ev) {
+        var btn = ev.target.closest(".chip");
+        if (!btn) return;
+        Array.prototype.forEach.call(group.querySelectorAll(".chip"), function (c) {
+          c.setAttribute("aria-pressed", String(c === btn));
+        });
+        state[key] = btn.dataset[key === "day" ? "day" : "sort"];
+        renderResults();
+      });
+    }
+    chips("f-day", "day");
+    chips("f-sort", "sort");
+  }
+
+  /* ---------- hour chart ---------- */
+
+  function renderHourChart() {
+    var svg = document.getElementById("hour-chart");
+    var W = 900, H = 340, L = 52, R = 14, T = 14, B = 42;
+    var rows = DATA.by_hour.slice().sort(function (a, b) { return a.hour - b.hour; });
+
+    var vals = [];
+    rows.forEach(function (r) { vals.push(r.model, r.historical, r.persistence, r.schedule); });
+    var lo = Math.floor(Math.min.apply(null, vals) / 20) * 20;
+    var hi = Math.ceil(Math.max.apply(null, vals) / 20) * 20;
+
+    function x(h) { return L + (h / 23) * (W - L - R); }
+    function y(v) { return T + (1 - (v - lo) / (hi - lo)) * (H - T - B); }
+
+    var ns = "http://www.w3.org/2000/svg";
+    function node(tag, attrs) {
+      var e = document.createElementNS(ns, tag);
+      Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+      return e;
+    }
+    function text(tx, ty, str, anchor, size, fill) {
+      var e = node("text", { x: tx, y: ty, "text-anchor": anchor || "middle",
+        "font-size": size || 11, fill: fill || css("--muted"), "font-family": "IBM Plex Mono, monospace" });
+      e.textContent = str;
+      return e;
+    }
+
+    svg.textContent = "";
+
+    for (var v = lo; v <= hi; v += 20) {
+      svg.appendChild(node("line", { x1: L, x2: W - R, y1: y(v), y2: y(v),
+        stroke: css("--rule"), "stroke-width": 1 }));
+      svg.appendChild(text(L - 9, y(v) + 4, String(v), "end"));
+    }
+    svg.appendChild(text(L - 44, T + 2, "MAE (s)", "start", 10));
+
+    for (var h = 0; h <= 23; h += 3) {
+      svg.appendChild(text(x(h), H - B + 20, String(h).padStart(2, "0"), "middle"));
+    }
+    svg.appendChild(text((L + W - R) / 2, H - 8, "hour of day — Vancouver local time", "middle", 11));
+
+    function path(key, stroke, width, dash) {
+      var d = rows.map(function (r, i) { return (i ? "L" : "M") + x(r.hour) + " " + y(r[key]); }).join(" ");
+      var p = node("path", { d: d, fill: "none", stroke: stroke, "stroke-width": width,
+        "stroke-linejoin": "round", "stroke-linecap": "round" });
+      if (dash) p.setAttribute("stroke-dasharray", dash);
+      svg.appendChild(p);
+    }
+    path("schedule", css("--muted"), 1.6, "5 4");
+    path("persistence", css("--warn"), 1.8);
+    path("historical", css("--bad"), 1.8);
+    path("model", css("--data"), 3);
+  }
+
+  /* ---------- importance chart ---------- */
+
+  function renderImportance() {
+    var svg = document.getElementById("imp-chart");
+    var rows = DATA.importance.slice(0, 12);
+    var W = 900, L = 230, R = 60, T = 10;
+    var barH = 24, gap = 8;
+    var H = T + rows.length * (barH + gap) + 10;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+
+    var max = rows[0].gain;
+    var ns = "http://www.w3.org/2000/svg";
+    function node(tag, attrs) {
+      var e = document.createElementNS(ns, tag);
+      Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+      return e;
+    }
+    svg.textContent = "";
+
+    rows.forEach(function (r, i) {
+      var yy = T + i * (barH + gap);
+      var w = (r.gain / max) * (W - L - R);
+      svg.appendChild(node("rect", { x: L, y: yy, width: Math.max(w, 2), height: barH, rx: 2,
+        fill: i === 0 ? css("--data") : css("--rule-strong") }));
+
+      var name = document.createElementNS(ns, "text");
+      name.setAttribute("x", L - 10);
+      name.setAttribute("y", yy + barH / 2 + 4);
+      name.setAttribute("text-anchor", "end");
+      name.setAttribute("font-size", 12);
+      name.setAttribute("font-family", "IBM Plex Mono, monospace");
+      name.setAttribute("fill", i === 0 ? css("--ink") : css("--ink-2"));
+      name.textContent = r.feature;
+      svg.appendChild(name);
+
+      var pct = document.createElementNS(ns, "text");
+      pct.setAttribute("x", L + Math.max(w, 2) + 8);
+      pct.setAttribute("y", yy + barH / 2 + 4);
+      pct.setAttribute("font-size", 12);
+      pct.setAttribute("font-family", "IBM Plex Mono, monospace");
+      pct.setAttribute("fill", css("--muted"));
+      pct.textContent = (r.gain * 100).toFixed(1) + "%";
+      svg.appendChild(pct);
+    });
+  }
+
+  /* ---------- route table ---------- */
+
+  function renderRouteTable() {
+    var body = document.querySelector("#route-table tbody");
+    DATA.by_route.forEach(function (r) {
+      var tr = el("tr");
+      tr.appendChild(el("td", null, "Route " + r.route));
+      tr.appendChild(el("td", "num", r.n.toLocaleString()));
+
+      var best = Math.min(r.model, r.historical, r.persistence, r.schedule);
+      [["model", r.model], ["historical", r.historical], ["persistence", r.persistence], ["schedule", r.schedule]]
+        .forEach(function (pair) {
+          var cls = "num";
+          if (pair[1] === best) cls += " best";
+          else if (pair[0] === "model") cls += " lost";
+          tr.appendChild(el("td", cls, fmt(pair[1], 1)));
+        });
+      tr.appendChild(el("td", "num", signed(r.mean_delay) + "s"));
+      body.appendChild(tr);
+    });
+  }
+
+  /* ---------- boot ---------- */
+
+  function start(data) {
+    DATA = data;
+    renderBoard(data.headline);
+    renderBars(data.headline);
+    buildControls();
+    renderResults();
+    renderHourChart();
+    renderImportance();
+    renderRouteTable();
+  }
+
+  fetch("./demo-data.json")
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(start)
+    .catch(function (err) {
+      document.getElementById("results").appendChild(
+        el("div", "empty",
+           "Could not load demo-data.json (" + err.message + "). Opening this file directly from " +
+           "disk blocks the request; serve the folder instead — python3 -m http.server — or view " +
+           "it on GitHub Pages."));
+    });
+
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) {
+    mq.addEventListener("change", function () {
+      if (!DATA) return;
+      renderHourChart();
+      renderImportance();
+    });
+  }
+})();
+</script>
+</body>
+</html>

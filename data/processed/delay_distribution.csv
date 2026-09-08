@@ -1,0 +1,8 @@
+bucket,n
+1. early >5m,20971
+2. early 1-5m,192288
+3. on time,394783
+4. late 1-3m,223968
+5. late 3-5m,98360
+6. late 5-10m,76943
+7. late >10m,33449

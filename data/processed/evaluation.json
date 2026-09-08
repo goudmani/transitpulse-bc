@@ -1,0 +1,16 @@
+{
+  "metrics": {
+    "mae": 114.27755834443111,
+    "rmse": 213.58168781263907,
+    "p90_abs_error": 238.3091583251953,
+    "persistence_mae": 130.1946581837652,
+    "schedule_mae": 152.1065531182614,
+    "historical_mae": 127.32312004613935,
+    "best_baseline": "historical",
+    "best_baseline_mae": 127.32312004613935,
+    "mae_ratio_vs_persistence": 0.8777438332618251,
+    "mae_ratio_vs_schedule": 0.7512993753502613,
+    "mae_ratio_vs_best_baseline": 0.8975397265085808,
+    "n_test": 4163041
+  }
+}
