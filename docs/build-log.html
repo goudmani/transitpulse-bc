@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TransitPulse Build Log</title>
+<meta name="description" content="How a real-time transit delay platform got built on AWS, and every bug that had to be found first.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f6f8f9;
+  --board: #16202b;
+  --board-ink: #eaf0f6;
+  --ink: #12181f;
+  --ink-2: #46545f;
+  --muted: #78868f;
+  --rule: #d8dfe5;
+  --rule-strong: #b9c4cd;
+  --flag: #f5c518;
+  --flag-ink: #2a2000;
+  --data: #0b5cd5;
+  --good: #147a56;
+  --bad: #c0342b;
+  --bad-soft: #fbeceb;
+  --silent: #7b3fb5;
+  --silent-soft: #f0e9f8;
+
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0e151c; --surface: #151f28; --surface-2: #1b2732;
+    --board: #0a1118; --board-ink: #e8eff5;
+    --ink: #e9eff4; --ink-2: #a9b7c2; --muted: #7d8c97;
+    --rule: #263440; --rule-strong: #37495a;
+    --flag: #f7cf3c; --flag-ink: #241b00;
+    --data: #6aa4f7; --good: #4cc494; --bad: #f0736a; --bad-soft: #3a1d1a;
+    --silent: #b388e0; --silent-soft: #2a1d3a;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0e151c; --surface: #151f28; --surface-2: #1b2732;
+  --board: #0a1118; --board-ink: #e8eff5;
+  --ink: #e9eff4; --ink-2: #a9b7c2; --muted: #7d8c97;
+  --rule: #263440; --rule-strong: #37495a;
+  --flag: #f7cf3c; --flag-ink: #241b00;
+  --data: #6aa4f7; --good: #4cc494; --bad: #f0736a; --bad-soft: #3a1d1a;
+  --silent: #b388e0; --silent-soft: #2a1d3a;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--body); font-size: 15.5px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+.shell { max-width: 940px; margin: 0 auto; padding: 0 22px; }
+
+h1, h2, h3, h4 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap: balance; }
+h2 { font-size: 33px; line-height: 1.05; }
+h3 { font-size: 22px; line-height: 1.15; }
+h4 { font-size: 17px; line-height: 1.2; }
+p { margin: 0 0 0.95em; }
+a { color: var(--data); }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--surface-2); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--rule); }
+
+.eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+/* masthead */
+.masthead { background: var(--board); color: var(--board-ink); padding: 40px 0 34px; }
+.masthead h1 { font-size: clamp(36px, 6vw, 56px); line-height: 0.95; color: var(--board-ink); }
+.masthead .lede { font-size: 18px; color: #a8b8c6; max-width: 62ch; margin-top: 12px; }
+.masthead .rule { height: 5px; background: var(--flag); width: 92px; margin: 22px 0 0; border-radius: 3px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; margin: 30px 0 6px; }
+.stat { background: var(--surface); padding: 14px 15px 13px; }
+.stat .v { font-family: var(--display); font-size: 30px; font-weight: 700; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stat .k { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+
+section { padding: 44px 0; }
+section + section { border-top: 1px solid var(--rule); }
+.intro { color: var(--ink-2); max-width: 68ch; }
+
+/* the line: stations down a spine */
+.line { position: relative; margin-top: 30px; padding-left: 46px; }
+.line::before { content: ""; position: absolute; left: 13px; top: 8px; bottom: 8px; width: 5px; background: var(--data); border-radius: 3px; }
+.stop2 { position: relative; padding-bottom: 34px; }
+.stop2::before {
+  content: ""; position: absolute; left: -40px; top: 4px; width: 17px; height: 17px;
+  border-radius: 50%; background: var(--surface); border: 4px solid var(--data); box-sizing: border-box;
+}
+.stop2.terminus::before { background: var(--flag); border-color: var(--board); }
+.stop2 .when { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.stop2 h3 { margin: 3px 0 8px; }
+.stop2 p { color: var(--ink-2); max-width: 66ch; margin-bottom: 0.7em; }
+
+/* bugs */
+.bug { background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--rule-strong); border-radius: 7px; padding: 17px 19px 6px; margin-bottom: 13px; }
+.bug.silent { border-left-color: var(--silent); }
+.bug .tag { display: inline-block; font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--rule); }
+.bug.silent .tag { background: var(--silent-soft); color: var(--silent); border-color: transparent; }
+.bug h4 { margin: 9px 0 7px; }
+.bug p { font-size: 14.5px; color: var(--ink-2); }
+.bug .fix { font-size: 13.5px; color: var(--ink-2); border-top: 1px solid var(--rule); padding-top: 10px; margin-top: 4px; }
+.bug .fix b { color: var(--ink); font-weight: 600; }
+
+.pull { border-left: 3px solid var(--flag); background: var(--surface-2); padding: 16px 20px 5px; border-radius: 0 7px 7px 0; margin: 22px 0; }
+.pull p { font-size: 15.5px; }
+.pull p:first-child { margin-top: 0; }
+
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 7px; padding: 18px 19px 6px; }
+.card h4 { margin-bottom: 7px; }
+.card p { font-size: 14.5px; color: var(--ink-2); }
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 7px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 480px; }
+th, td { padding: 10px 15px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+tbody tr:last-child td { border-bottom: none; }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+footer { background: var(--board); color: #93a5b3; padding: 30px 0 42px; font-size: 14px; margin-top: 10px; }
+footer a { color: #9fc2f5; }
+:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="shell">
+    <div class="eyebrow" style="color:#8fa3b3">Build log · August–September 2026</div>
+    <h1>TransitPulse Build Log</h1>
+    <p class="lede">A streaming data platform and delay model for Metro Vancouver buses —
+    and an honest account of the eighteen bugs that had to be found before any of the
+    numbers meant anything.</p>
+    <div class="rule"></div>
+  </div>
+</header>
+
+<main class="shell">
+
+  <section>
+    <div class="stats">
+      <div class="stat"><div class="v">27</div><div class="k">days collected</div></div>
+      <div class="stat"><div class="v">15.5M</div><div class="k">gold rows</div></div>
+      <div class="stat"><div class="v">151</div><div class="k">AWS resources</div></div>
+      <div class="stat"><div class="v">114.3<span style="font-size:16px">s</span></div><div class="k">model MAE</div></div>
+      <div class="stat"><div class="v">$0.79</div><div class="k">per day</div></div>
+      <div class="stat"><div class="v">18</div><div class="k">bugs found</div></div>
+    </div>
+    <p class="intro" style="margin-top:20px">Six of those eighteen bugs were <strong>silent</strong>:
+    every job reported success, every dashboard was green, and the data was wrong anyway. Those are
+    the ones worth reading about. A crash tells you where it is. A silent bug tells you nothing, and
+    the only thing standing between it and a published number is somebody deciding to check.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">The route</div>
+    <h2>How it got built</h2>
+    <p class="intro">Nine stops, in order. Each one produced something that worked and something
+    that didn't.</p>
+
+    <div class="line">
+
+      <div class="stop2">
+        <div class="when">Stop 1 · Foundations</div>
+        <h3>Terraform, and an API key that nearly went public</h3>
+        <p>Eight Terraform modules, 151 resources, OIDC federation so GitHub Actions could deploy
+        without long-lived credentials. Before any of that ran, the very first thing worth checking
+        turned out to be the smallest file in the repo.</p>
+        <p><code>.gitignore</code> contained one line. <code>.env</code>, holding the TransLink API
+        key, was not in it. The first <code>git push</code> would have published a working
+        credential to a public repository.</p>
+      </div>
+
+      <div class="stop2">
+        <div class="when">Stop 2 · Ingestion</div>
+        <h3>GTFS-Realtime into Kinesis, twice as fast as allowed</h3>
+        <p>A Lambda polls three TransLink GTFS-Realtime feeds, decodes protobuf, and writes to a
+        Kinesis stream that Firehose drains into S3 as Parquet. Roughly 16 million rows a day.</p>
+        <p>One shard accepts 1,000 records per second. The poller was pushing about 2,400. Kinesis
+        throttled, invocations failed, and polls went to the dead-letter queue — losing data that
+        can never be re-fetched, because a real-time feed has no history.</p>
+      </div>
+
+      <div class="stop2">
+        <div class="when">Stop 3 · The lakehouse</div>
+        <h3>Bronze, silver, gold — and 25 rows collapsing into one</h3>
+        <p>Bronze is raw Parquet. Silver is Iceberg, one row per <em>arrival</em> rather than per
+        <em>prediction</em>: the feed re-publishes its guess for the same bus at the same stop every
+        two minutes, so 2,021,771 bronze rows collapsed to 79,945 real stop events. Gold adds the
+        point-in-time-correct features the model trains on.</p>
+        <p>The rule the gold job exists to enforce: every feature must have been knowable 15 minutes
+        before the arrival it predicts. Historical aggregates use service dates <em>strictly
+        earlier</em> than the run date. Break that and the metrics look excellent and mean nothing.</p>
+      </div>
+
+      <div class="stop2">
+        <div class="when">Stop 4 · Cost</div>
+        <h3>$120/month, projected, on day three</h3>
+        <p>The first days ran at about $4/day. The estimate had been $21/month. Four changes brought
+        it to $0.79/day — a scale where a portfolio project can run for a month without thinking
+        about it.</p>
+        <p>The largest single win was counterintuitive: <strong>Firehose bills every record rounded
+        up to 5 KB</strong>, and the rows were about 200 bytes each. Unpacked, 2.3 GB of real data
+        was being billed as 57 GB. Packing 100 rows into each Kinesis record — and adding a
+        de-aggregation processor on the Firehose side to split them back out — fixed it.</p>
+      </div>
+
+      <div class="stop2">
+        <div class="when">Stop 5 · Data quality</div>
+        <h3>Three per cent of the rows were buses that never came</h3>
+        <p>GTFS-Realtime marks cancelled trips with <code>schedule_relationship = 3</code>. A
+        cancelled trip never arrives, so its last-published delay is fiction. The field was being
+        dropped at the bronze-to-silver boundary, so nothing downstream could filter on it.</p>
+        <p>Filtering them removed only 0.7% of stop events — cancelled trips get re-published more
+        often than scheduled ones — but raised label completeness from 0.982 to 0.991.</p>
+      </div>
+
+      <div class="stop2">
+        <div class="when">Stop 6 · The silent ones</div>
+        <h3>Eight days of collection, one day of data</h3>
+        <p>Gold held exactly one service date after eight days of successful nightly runs. Every
+        Glue job had reported SUCCEEDED with a correct row count, every day.</p>
+        <p>Spark's default <code>partitionOverwriteMode</code> is <code>STATIC</code>, which deletes
+        the <em>entire table path</em> before writing rather than just the partitions being written.
+        Every night the job wiped the previous week and wrote one day. Silver never showed it because
+        Iceberg <code>MERGE</code> accumulates. The monitoring counted silver, so it cheerfully
+        reported "8 of 21 days collected, healthy" throughout.</p>
+      </div>
+
+      <div class="stop2">
+        <div class="when">Stop 7 · Time</div>
+        <h3>A timestamp is not a time until you say where it is</h3>
+        <p>Four separate defects turned out to be one mistake wearing different clothes. The worst:
+        <code>hour_of_day</code>, <code>day_of_week</code> and <code>is_weekend</code> were derived
+        from a UTC timestamp, but the peak-hours list was written for local hours. Vancouver is
+        UTC−7 in summer, so every arrival after 17:00 local — about 29% of rows, and the
+        second-busiest stretch of the day — was stamped with the next day's date. A Friday evening
+        bus was labelled Saturday.</p>
+        <p>The fix is <code>from_utc_timestamp(ts, "America/Vancouver")</code> — a real zone rather
+        than a fixed −7, because the collection window crosses the daylight-saving boundary and a
+        fixed offset is a bug with a delayed fuse.</p>
+      </div>
+
+      <div class="stop2">
+        <div class="when">Stop 8 · The split</div>
+        <h3>Two weeks held out, never shuffled</h3>
+        <p>7.23M rows to train, 4.13M to validate, 4.16M to test — split by date, not at random. A
+        random split leaks the future through the historical aggregates: a row from Tuesday helps
+        predict Monday, and every metric becomes fraudulent.</p>
+        <p>The split key is the GTFS <em>service date</em>, not the calendar date, so a trip
+        departing 23:40 and arriving 00:20 lands wholly on one side of the boundary instead of
+        straddling it.</p>
+      </div>
+
+      <div class="stop2 terminus">
+        <div class="when">Stop 9 · The model</div>
+        <h3>114.3 seconds, and a baseline that wasn't the one we expected</h3>
+        <p>XGBoost, optimising absolute error directly because that is the metric being reported.
+        Trained on SageMaker, evaluated against three baselines on the held-out week, gated on the
+        result, and registered.</p>
+        <p>The surprise was which baseline was hardest. The project had assumed persistence would be
+        the bar. The historical median beat it — and the registry gate had been pointed at the wrong
+        one.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">The interesting part</div>
+    <h2>Six bugs that reported success</h2>
+    <p class="intro">Ordered by how long they would have survived undetected.</p>
+
+    <div style="margin-top:24px">
+
+      <div class="bug silent">
+        <span class="tag">Silent · found by reading row counts</span>
+        <h4>Athena partition projection is an Athena feature. Spark cannot see it.</h4>
+        <p>The bronze table used partition projection, which lets Athena infer partitions from a
+        naming pattern instead of a metastore. Spark has no such concept, so the Glue job found no
+        partitions, read zero rows, wrote zero rows, and finished in 73 seconds reporting SUCCESS.</p>
+        <p class="fix"><b>Fix:</b> read the S3 prefix directly instead of the catalog table.
+        <b>Lesson:</b> a job that finishes suspiciously fast has not finished.</p>
+      </div>
+
+      <div class="bug silent">
+        <span class="tag">Silent · found by checking a nullable column</span>
+        <h4><code>to_timestamp()</code> on an epoch integer returns NULL</h4>
+        <p>GTFS timestamps arrive as Unix epoch seconds. <code>to_timestamp()</code> parses
+        <em>strings</em>; given a bigint it returns null rather than erroring. Four temporal features
+        were silently null for every row.</p>
+        <p class="fix"><b>Fix:</b> <code>timestamp_seconds()</code>. <b>Lesson:</b> in Spark, a
+        type mismatch is usually a null, not an exception.</p>
+      </div>
+
+      <div class="bug silent">
+        <span class="tag">Silent · found by plotting the data</span>
+        <h4>Temporal features in UTC, thresholds in local time</h4>
+        <p>29% of rows carried the wrong hour, the wrong day of week, and the wrong weekend flag.
+        Nothing failed. The model trained happily on it.</p>
+        <p class="fix"><b>Found by:</b> drawing an hour-of-day chart and noticing it showed a bus
+        network with no overnight trough — which is not a thing that exists. <b>Lesson:</b> plot the
+        data. A chart of something physical fails visibly in a way a row count never does.</p>
+      </div>
+
+      <div class="bug silent">
+        <span class="tag">Silent · found by asking "why only one folder?"</span>
+        <h4>The nightly job deleted six days of work, every night</h4>
+        <p>Spark's static partition overwrite mode wipes the whole table path. Eight successful runs
+        produced one day of data. Every job was green.</p>
+        <p class="fix"><b>Fix:</b> <code>partitionOverwriteMode = dynamic</code>, then backfill.
+        <b>Lesson:</b> monitor the thing you care about, not its upstream. The health check counted
+        silver rows, so it never noticed gold was empty. A gold-partition check was added to the ops
+        agent afterwards — reading S3 directly, because partition projection would have described
+        folders that <em>could</em> exist and hidden the bug all over again.</p>
+      </div>
+
+      <div class="bug silent">
+        <span class="tag">Silent · found by reading a header</span>
+        <h4>The static feed had a column the schema didn't</h4>
+        <p>TransLink's <code>trips.txt</code> includes <code>trip_short_name</code>, which the
+        generic GTFS DDL omits. Registering the table with the wrong column order would have shifted
+        every field by one — <code>route_id</code> reading from <code>service_id</code> — with no
+        error at any point.</p>
+        <p class="fix"><b>Found by:</b> checking the header bytes of the CSV before registering the
+        table rather than after. <b>Lesson:</b> a specification describes what a feed may contain,
+        not what this feed does contain.</p>
+      </div>
+
+      <div class="bug silent">
+        <span class="tag">Silent · found by not trusting a $0 bill</span>
+        <h4>Cost reporting that always said zero</h4>
+        <p>The Cost Explorer API appeared to report near-zero spend. It wasn't broken: the account
+        was covered by credits, and an unfiltered query sums Usage, Credit and Tax record types, so
+        credits netted usage to roughly nothing.</p>
+        <p class="fix"><b>Fix:</b> filter <code>RECORD_TYPE = Usage</code>. <b>Lesson:</b> gross
+        usage is the number that answers "is this wasteful". Credits run out; the burn rate is what
+        you are actually managing.</p>
+      </div>
+
+    </div>
+
+    <div class="pull">
+      <p><strong>The pattern across all six:</strong> none of them threw. Every one was found by
+      somebody looking at an actual number and asking whether it was plausible — a row count, a
+      column header, a chart shape, a folder listing, a bill. The tests passed throughout. The
+      dashboards were green throughout.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Modelling</div>
+    <h2>The gate was pointed at the wrong baseline</h2>
+    <p class="intro">A quality gate that lets a model into the registry is only as honest as the
+    thing it compares against.</p>
+
+    <div class="table-wrap" style="margin:24px 0 20px">
+      <table>
+        <thead><tr><th>Baseline</th><th style="text-align:right">MAE</th><th>What it assumes</th></tr></thead>
+        <tbody>
+          <tr><td>Published schedule</td><td class="num">152.1s</td><td>the timetable is right; predict zero delay</td></tr>
+          <tr><td>Persistence</td><td class="num">130.2s</td><td>a bus four minutes late stays four minutes late</td></tr>
+          <tr><td><strong>Historical median</strong></td><td class="num"><strong>127.3s</strong></td><td>this stop, at this hour, on this type of day</td></tr>
+          <tr><td><strong>XGBoost</strong></td><td class="num"><strong>114.3s</strong></td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The pipeline gated on <code>mae_ratio_vs_persistence &lt;= 0.92</code>, which assumed
+    persistence was the toughest baseline. It isn't. To rule out an artefact — the historical
+    feature is null for 16% of rows and falls back to predicting zero — both were re-scored on only
+    the 3,489,305 rows where both are genuinely defined. The gap widened: <strong>126.1s for
+    historical against 131.5s for persistence.</strong></p>
+
+    <p>So delay at a given stop is more a property of <em>that stop at that hour</em> than of the
+    individual bus. Left alone, the gate would have admitted a model scoring 125s — worse than a
+    lookup table — while reporting that it had passed. It now measures against whichever baseline
+    actually wins.</p>
+
+    <div class="pull">
+      <p><strong>Fifteen trees.</strong> Training was configured for 800 boosting rounds. Early
+      stopping halted at 64, with the best validation score at round 15. Past that, training error
+      kept falling while validation error rose — with 7.2 million training rows, that is not a
+      shortage of data. It is two different weeks of a city. Early stopping is the difference
+      between noticing that and shipping it.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Infrastructure</div>
+    <h2>Four fights with AWS</h2>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card">
+        <h4>Every training quota was zero</h4>
+        <p>Not just spot — every <code>ml.*</code> training instance quota on a new account was 0, so
+        turning off spot changed nothing. Two quota increases, both free. A further trap: the request
+        API validates against the <em>published default</em>, not your applied value, so asking for 2
+        of a quota defaulting to 4 is rejected as a decrease even when you currently have none.</p>
+      </div>
+      <div class="card">
+        <h4>Two APIs that look identical</h4>
+        <p>In the SageMaker SDK, <code>estimator.fit()</code> means "train now" under a
+        <code>Session</code> and "record this step" under a <code>PipelineSession</code>. Using the
+        wrong one produced a <code>TypeError</code> about string conversion — botocore crashing while
+        formatting its own error message about an unresolved pipeline variable.</p>
+      </div>
+      <div class="card">
+        <h4>Alarms cannot cross regions</h4>
+        <p>Billing metrics only exist in us-east-1, but a CloudWatch alarm can only act on an SNS
+        topic in its own region. The cost alarm needed a second topic in us-east-1 subscribed to a
+        cross-region forwarder.</p>
+      </div>
+      <div class="card">
+        <h4>Deleting an instance is not deleting a cluster</h4>
+        <p>An orphaned Aurora cluster in an unrelated region had been quietly billing for weeks. The
+        RDS <em>instance</em> had been deleted; the <em>cluster</em> had not. They are separate
+        objects with separate lifecycles.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">If I did it again</div>
+    <h2>What I would change</h2>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card">
+        <h4>Store timestamps with their zone, once</h4>
+        <p>Four bugs, one root cause. The fix is not vigilance at each call site, it is making the
+        zone part of the value so a naive local-time comparison is impossible to write.</p>
+      </div>
+      <div class="card">
+        <h4>Assert the invariant, not the run</h4>
+        <p>Every silent bug passed because the job checked "did I finish" rather than "is the output
+        the shape it must be". Row conservation across a split, partition count matching distinct
+        dates, no nulls in a required column — cheap assertions that fail loudly.</p>
+      </div>
+      <div class="card">
+        <h4>Plot it on day one</h4>
+        <p>The timezone bug survived weeks of green dashboards and died the moment someone drew a
+        chart. Physical data has a shape you already know; a bad chart is obvious in a way a bad row
+        count is not.</p>
+      </div>
+      <div class="card">
+        <h4>Collect through a season change</h4>
+        <p>27 days of late summer means the four weather features learned almost nothing, because
+        there was almost no weather. The interesting variance in transit delay is in November.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="shell">
+    <p style="font-family:var(--display);font-size:20px;color:var(--board-ink);margin-bottom:4px">TransitPulse BC</p>
+    <p>Terraform · Kinesis · Firehose · Glue/PySpark · Iceberg · Athena · SageMaker Pipelines ·
+    Step Functions · DynamoDB · a read-only LangChain ops agent.</p>
+    <p style="font-family:var(--mono);font-size:11.5px;margin-top:16px">
+      <a href="./index.html">Interactive model demo</a> ·
+      <a href="https://github.com/goudmani/transit-pulse-bc">Source on GitHub</a><br>
+      Transit data from TransLink, used under their Open API Terms of Use. Weather from Open-Meteo.
+      An independent portfolio project, not affiliated with or endorsed by TransLink.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
