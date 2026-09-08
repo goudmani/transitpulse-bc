@@ -75,17 +75,35 @@ class Baselines:
     n: int = 0
     mae_schedule: float = 0.0
     mae_persistence: float = 0.0
+    mae_historical: float = 0.0
 
     @property
-    def persistence_gain_pct(self) -> float:
+    def best(self) -> tuple[str, float]:
+        """Name and MAE of the strongest simple baseline -- what the gate uses.
+
+        Not always persistence: on the collected data the historical median wins
+        (127.3s vs 130.2s), so hard-coding persistence here would set the bar too
+        low and admit a model a lookup table already beats.
+        """
+        candidates = [
+            ("historical median", self.mae_historical),
+            ("persistence", self.mae_persistence),
+            ("schedule", self.mae_schedule),
+        ]
+        usable = [pair for pair in candidates if pair[1] > 0]
+        return min(usable, key=lambda pair: pair[1]) if usable else ("none", 0.0)
+
+    @property
+    def best_gain_pct(self) -> float:
+        """How much the best baseline improves on the printed timetable."""
         if not self.mae_schedule:
             return 0.0
-        return (self.mae_schedule - self.mae_persistence) / self.mae_schedule * 100
+        return (self.mae_schedule - self.best[1]) / self.mae_schedule * 100
 
     @property
     def registry_gate_sec(self) -> float:
         """A model must beat this to be registered. Gate is <= 0.92."""
-        return self.mae_persistence * 0.92
+        return self.best[1] * 0.92
 
 
 @dataclass
@@ -146,7 +164,13 @@ def baselines() -> Baselines:
         return Baselines()
     row = result[1][0]
     try:
-        return Baselines(n=int(row[0]), mae_schedule=float(row[1]), mae_persistence=float(row[2]))
+        return Baselines(
+            n=int(row[0]),
+            mae_schedule=float(row[1]),
+            mae_persistence=float(row[2]),
+            # Query 3 grew a fourth column; tolerate an older cached result.
+            mae_historical=float(row[3]) if len(row) > 3 else 0.0,
+        )
     except (ValueError, IndexError) as exc:
         log.warning("could not parse baseline row %r: %s", row, exc)
         return Baselines()

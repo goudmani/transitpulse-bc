@@ -152,7 +152,12 @@ resource "aws_cloudwatch_event_rule" "poll" {
   # ~2 minutes off that target instead of ~1.
   description         = "Poll the GTFS-Realtime feed"
   schedule_expression = "rate(2 minutes)"
-  state               = "ENABLED"
+
+  # Collection finished 2026-09-06 with 27 service days, past the 21 a
+  # time-based split needs. Disabled here rather than with `make pause`, because
+  # that only calls DisableRule and the next apply would set state back to
+  # ENABLED from this very line. Set back to ENABLED to resume collecting.
+  state = "DISABLED"
 }
 
 resource "aws_cloudwatch_event_target" "poll" {

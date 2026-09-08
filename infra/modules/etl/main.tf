@@ -17,6 +17,7 @@ locals {
     gold     = "gold_features.py"
     dq       = "dq_checks.py"
     backtest = "backtest.py"
+    split    = "split_features.py"
   }
 }
 

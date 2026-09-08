@@ -137,10 +137,11 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
         else f"Computed over the full {col.days}-day training window."
     )
     historical = (
-        "pending, needs ≥5 days of history"
-        if col.days < 5
-        else "see `sql/07_profile_queries.sql` query 4"
+        f"**{base.mae_historical:.1f}**"
+        if base.mae_historical
+        else "pending, needs ≥5 days of history"
     )
+    best_name, best_mae = base.best
 
     return "\n".join(
         [
@@ -152,12 +153,13 @@ def render_baselines(base: facts.Baselines, col: facts.Collection) -> str:
             f"| Published schedule (predict zero delay) | **{base.mae_schedule:.1f}** |",
             f"| Persistence (bus stays as late as it currently is) | "
             f"**{base.mae_persistence:.1f}** |",
-            f"| Historical median for route/stop/hour | {historical} |",
+            f"| Historical median for route/stop/day-type/hour | {historical} |",
             "| **XGBoost model** | pending, Phase 6 |",
             "",
-            f"Persistence beats the printed timetable by "
-            f"{base.persistence_gain_pct:.1f}%. The registry gate is "
-            f"`mae_ratio_vs_persistence <= 0.92`, so a model must reach "
+            f"The strongest of these is **{best_name}** at {best_mae:.1f}s, which "
+            f"beats the printed timetable by {base.best_gain_pct:.1f}%. The registry "
+            f"gate is `mae_ratio_vs_best_baseline <= 0.92` — measured against "
+            f"whichever baseline wins, not an assumed one — so a model must reach "
             f"**≤ {base.registry_gate_sec:.1f} seconds** to be registered at all.",
         ]
     )
@@ -304,7 +306,9 @@ def _fact_summary(col, base, cost, dep) -> str:
             f"- Label completeness: {col.label_rate:.3f}",
             f"- MAE, published schedule: {base.mae_schedule:.1f}s",
             f"- MAE, persistence: {base.mae_persistence:.1f}s",
-            f"- Persistence beats schedule by: {base.persistence_gain_pct:.1f}%",
+            f"- MAE, historical median: {base.mae_historical:.1f}s",
+            f"- Best baseline: {base.best[0]} at {base.best[1]:.1f}s, "
+            f"beating schedule by {base.best_gain_pct:.1f}%",
             f"- SageMaker endpoints deployed: {dep.endpoints}",
             f"- Registered model packages: {dep.model_packages}",
             f"- SageMaker pipelines: {dep.pipelines}",

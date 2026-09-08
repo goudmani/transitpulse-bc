@@ -63,16 +63,22 @@ ORDER BY hour_of_day;
 --
 -- mae_schedule is what the printed timetable achieves: predict zero delay.
 -- mae_persistence assumes the bus stays exactly as late as it was 15 minutes
--- before arrival. coalesce to 0 so a missing snapshot degrades to the schedule
--- baseline rather than dropping the row and flattering the number.
+-- before arrival. mae_historical predicts this route/stop/day-type/hour's
+-- trailing median delay. Each coalesces to 0 so a missing input degrades to the
+-- schedule baseline rather than dropping the row and flattering the number.
 --
--- The registry gate is mae_ratio_vs_persistence <= 0.92, so a model must reach
--- mae_persistence * 0.92 to be registered at all.
+-- Runs on training_features, not stop_events: hist_median_delay only exists in
+-- gold, and gold is where hour_of_day is in local time.
+--
+-- The registry gate is mae_ratio_vs_best_baseline <= 0.92 -- the model must beat
+-- whichever of these three wins, which on this dataset is the historical median,
+-- not persistence.
 -- ---------------------------------------------------------------------------
-SELECT count(*)                                                       AS n,
-       round(avg(abs(observed_delay_sec)), 1)                         AS mae_schedule,
-       round(avg(abs(observed_delay_sec - coalesce(delay_t_minus_15, 0))), 1) AS mae_persistence
-FROM transitpulse.stop_events
+SELECT count(*)                                                              AS n,
+       round(avg(abs(observed_delay_sec)), 1)                                AS mae_schedule,
+       round(avg(abs(observed_delay_sec - coalesce(delay_t_minus_15, 0))), 1) AS mae_persistence,
+       round(avg(abs(observed_delay_sec - coalesce(hist_median_delay, 0))), 1) AS mae_historical
+FROM transitpulse.training_features
 WHERE observed_delay_sec IS NOT NULL;
 
 

@@ -53,14 +53,22 @@ Over 15,357,297 labelled stop arrivals, 2026-08-11 to 2026-09-06. Computed over 
 Persistence beats the printed timetable by 13.2%. The registry gate is `mae_ratio_vs_persistence <= 0.92`, so a model must reach **≤ 123.9 seconds** to be registered at all.
 <!-- agent:baselines:end -->
 
-That persistence number is the honest bar. "A bus four minutes late tends to stay
-four minutes late" is a hard baseline, and a model that only ties it is a real
-finding rather than a failure to hide. A gate that always passes is decoration.
+"A bus four minutes late tends to stay four minutes late" is a hard baseline, and
+a model that only ties it is a real finding rather than a failure to hide. A gate
+that always passes is decoration.
+
+The gate is wired to whichever baseline is strongest, which turned out **not** to
+be persistence. On the held-out test week the historical median reaches 127.3s
+against persistence's 130.2s. Restricting both to the 3,489,305 rows that actually
+have a prior — so neither gets credit for the fallback — the gap widens: **126.1s
+versus 131.5s**. Delay at a given stop is more a property of that stop at that
+hour than of the individual bus. Had the gate stayed on persistence, a model at
+125s would have registered while a lookup table beat it.
 
 The historical-median baseline needs `hist_median_delay`, which requires ≥20
 observations per route/stop/day-type/hour cell from *strictly earlier* service
 dates. That is the leakage guard, and it means the feature is empty until roughly
-day five.
+day five, and null for 16% of test rows even now.
 
 All measured on a time-based hold-out split, never random. A random split leaks
 the future through the historical aggregates and makes every metric fraudulent.

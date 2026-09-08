@@ -38,8 +38,12 @@ def build(args: argparse.Namespace) -> Pipeline:
     test_uri = ParameterString(
         "TestUri", default_value=f"s3://{args.gold_bucket}/features/split/test/"
     )
-    # Must beat "the bus stays as late as it currently is" by this margin.
-    max_ratio = ParameterFloat("MaxMaeRatioVsPersistence", default_value=0.92)
+    # Must beat the STRONGEST simple baseline by this margin -- whichever of
+    # schedule / persistence / historical-median wins on the test set. Measured on
+    # the 2026-08-11..09-06 test split: historical 127.3s, persistence 130.2s,
+    # schedule 152.1s. Gating on persistence alone would have admitted a model at
+    # 125s that a route/stop/hour lookup table already beats.
+    max_ratio = ParameterFloat("MaxMaeRatioVsBestBaseline", default_value=0.92)
 
     estimator = XGBoost(
         entry_point="train.py",
@@ -125,7 +129,7 @@ def build(args: argparse.Namespace) -> Pipeline:
         left=JsonGet(
             step_name=eval_step.name,
             property_file=report,
-            json_path="metrics.mae_ratio_vs_persistence",
+            json_path="metrics.mae_ratio_vs_best_baseline",
         ),
         right=max_ratio,
     )
@@ -137,7 +141,7 @@ def build(args: argparse.Namespace) -> Pipeline:
         else_steps=[
             FailStep(
                 name="RejectModel",
-                error_message="Model did not beat the persistence baseline by the required margin.",
+                error_message="Model did not beat the strongest simple baseline by the required margin.",
             )
         ],
     )

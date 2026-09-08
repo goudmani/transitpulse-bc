@@ -58,6 +58,17 @@ def main() -> None:
 
     p90_error = float((test[TARGET] - predictions).abs().quantile(0.9))
 
+    # Gate against whichever baseline actually wins, not the one we assumed would.
+    # On this dataset the historical median beats persistence (126.1 vs 131.5 on
+    # the 3.49M test rows that have a prior), so a gate wired to persistence would
+    # pass a model that a lookup table already outperforms.
+    baselines = {
+        "persistence": persistence_mae,
+        "schedule": schedule_mae,
+        "historical": historical_mae,
+    }
+    best_baseline, best_baseline_mae = min(baselines.items(), key=lambda item: item[1])
+
     report = {
         "metrics": {
             "mae": model_mae,
@@ -66,10 +77,15 @@ def main() -> None:
             "persistence_mae": persistence_mae,
             "schedule_mae": schedule_mae,
             "historical_mae": historical_mae,
+            "best_baseline": best_baseline,
+            "best_baseline_mae": best_baseline_mae,
             "mae_ratio_vs_persistence": model_mae / persistence_mae
             if persistence_mae
             else float("inf"),
             "mae_ratio_vs_schedule": model_mae / schedule_mae if schedule_mae else float("inf"),
+            "mae_ratio_vs_best_baseline": model_mae / best_baseline_mae
+            if best_baseline_mae
+            else float("inf"),
             "n_test": int(len(test)),
         }
     }
