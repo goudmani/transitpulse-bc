@@ -168,13 +168,19 @@ footer a { color: #9fc2f5; }
 
       <div class="stop2">
         <div class="when">Stop 1 · Foundations</div>
-        <h3>Terraform, and an API key that nearly went public</h3>
-        <p>Eight Terraform modules, 151 resources, OIDC federation so GitHub Actions could deploy
-        without long-lived credentials. Before any of that ran, the very first thing worth checking
-        turned out to be the smallest file in the repo.</p>
-        <p><code>.gitignore</code> contained one line. <code>.env</code>, holding the TransLink API
-        key, was not in it. The first <code>git push</code> would have published a working
-        credential to a public repository.</p>
+        <h3>151 resources, none of them clicked into existence</h3>
+        <p>Eight Terraform modules covering the whole platform: the lake, ingestion, ETL, the ML
+        pipeline, serving, networking, CI/CD and observability. State lives in S3 with a DynamoDB
+        lock table, so the stack can be destroyed and rebuilt from scratch, which it was, more than
+        once.</p>
+        <p>GitHub Actions deploys through <strong>OIDC federation</strong> rather than a stored
+        access key. The workflow requests a short-lived token that AWS trusts because of who issued
+        it and which repository it came from, so there is no long-lived credential to leak or
+        rotate. There are <strong>no NAT gateways</strong> either. Every Lambda runs outside the
+        VPC, where it already has outbound internet access, so nothing needs one. A NAT gateway
+        costs about <strong>$32 a month before data charges</strong>, which is more than this entire
+        platform spends in a month. It is the most expensive thing you can add to an architecture
+        diagram by reflex.</p>
       </div>
 
       <div class="stop2">
