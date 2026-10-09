@@ -351,7 +351,7 @@ it watches is a bad trade. Details in [`docs/agent.md`](docs/agent.md).
   so an endpoint would fall back to `DEFAULTS` for the four `hist_*` features,
   15% of the model's total gain, and quietly return predictions worse than the
   114.3s reported here. A demo that serves degraded predictions is worse than no
-  demo. See [the static demo](https://goudmani.github.io/transit-pulse-bc/), which
+  demo. See [the static demo](https://goudmani.github.io/transitpulse-bc/), which
   scores real held-out rows with the real artifact.
 - **Known training/serving skew, unresolved.** `src/serving/predict/features.py`
   uses a fixed `LOCAL_OFFSET = timedelta(hours=-7)` while training is DST-aware via
