@@ -202,11 +202,16 @@ def sample(frame: pd.DataFrame) -> list[dict]:
 def write_profile_csvs(frame: pd.DataFrame, out_dir: Path) -> None:
     """Refresh the two CSVs the README charts are built from.
 
-    These were previously exported from Athena over `stop_events`, whose
-    hour_of_day was UTC -- so plot_profile.py compensated with a hard-coded -7.
-    Regenerating them here from the gold split means the hours are already
-    Vancouver local and the charts, the model metrics and the demo page all
-    describe the same rows.
+    NOT run by default. These CSVs describe the whole 27-day collection
+    (15,525,290 rows) and are exported from Athena over training_features, which
+    this script cannot see: it only has whatever slice of the test split is on
+    disk. Writing them from here silently shrank the README charts to one week
+    of data while leaving their captions claiming the full window. Pass
+    --write-csvs only when the local frame really is the whole table.
+
+    The queries that produce them properly are in the commit that added this
+    note; they filter service_date <= 2026-09-06 so every figure in the README
+    covers the same rows the model was built from.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -243,6 +248,12 @@ def main() -> None:
     parser.add_argument("--test-glob", default="/tmp/feat/test/*.parquet")
     parser.add_argument("--out", default="docs/demo-data.json")
     parser.add_argument("--csv-dir", default="data/processed")
+    parser.add_argument(
+        "--write-csvs",
+        action="store_true",
+        help="overwrite the README chart CSVs from the local frame. Only correct "
+        "if that frame is the whole table rather than a downloaded slice.",
+    )
     args = parser.parse_args()
 
     booster, features, frame = load(Path(args.model_dir), args.test_glob)
@@ -257,7 +268,8 @@ def main() -> None:
         "samples": sample(frame),
     }
 
-    write_profile_csvs(frame, Path(args.csv_dir))
+    if args.write_csvs:
+        write_profile_csvs(frame, Path(args.csv_dir))
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

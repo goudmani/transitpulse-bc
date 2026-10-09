@@ -178,12 +178,14 @@ Decisions and their trade-offs are recorded in `docs/adr/`.
 15,849,990 stop arrivals over 28 days of collection (2026-08-11 to 2026-09-07), label completeness 0.990.
 <!-- agent:dataprofile:end -->
 
-The charts below are drawn by `python scripts/plot_profile.py` from the CSVs in
-`data/processed/`, which `scripts/build_demo_data.py` regenerates from the same
-held-out split the model was scored on. One source of numbers for the charts, the
-metrics and the demo page.
+The two charts below cover the whole collection, all 15,525,290 gold rows across
+27 service days. They are drawn by `python scripts/plot_profile.py` from CSVs
+exported out of Athena over `transitpulse.training_features`, filtered to
+`service_date <= 2026-09-06` so they describe exactly the rows the model was
+built from. The model charts further up cover the held-out test week only, which
+is the honest scope for anything claiming a score.
 
-![Arrival delay distribution: 42% late, 38% on time, 21% early](img/delay_distribution.png)
+![Arrival delay distribution: 41% late, 38% on time, 21% early](img/delay_distribution.png)
 
 Buses run late more often than early, but the distribution is wide in both
 directions: 21% of arrivals are more than a minute *ahead* of schedule. That is
@@ -192,11 +194,14 @@ has a floor of −1800 seconds rather than zero.
 
 ![Hourly service volume and delay profile](img/hourly_profile.png)
 
-The 46× swing in arrivals between 3am and the afternoon peak is the feed
-reflecting how many buses are actually on the road. The second panel is the
-interesting one: **volume and delay do not move together.** The busiest hours are
-not the worst ones, and the quietest hour of the night carries a higher mean delay
-than the morning rush.
+The 22× swing in arrivals between 3am (49,306) and the 5pm peak (1,060,983) is
+the feed reflecting how many buses are actually on the road. The second panel is
+the interesting one: **volume and delay do not move together.** The busiest hour
+is 17:00, but the worst mean delay is at 19:00, after the peak has passed. And
+3am, the quietest hour of the night, averages **97.8 seconds of delay against
+19.2 seconds at 7am**: five times worse at a twentieth of the volume. An
+overnight route running every 30 minutes has no slack to absorb anything, while
+the morning rush is the hour the timetable is actually written for.
 
 Volume and delay are plotted on separate stacked axes rather than a shared one,
 because a dual-axis chart lets you imply any correlation you like by sliding the

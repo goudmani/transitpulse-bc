@@ -85,9 +85,22 @@ def delay_distribution() -> None:
     y = range(len(df))[::-1]
     ax.barh(list(y), df["pct"], color=colors, height=0.68)
 
+    # The count sits inside the bar, but a 2% bar is far too narrow to hold
+    # "317,431" and the text spills out over the percentage beside it. Below the
+    # width where it fits, move the count outside and trail it after the percent.
     for yi, pct, n in zip(y, df["pct"], df["n"], strict=True):
-        ax.text(pct + 0.7, yi, f"{pct:.1f}%", va="center", fontsize=9, color=INK2)
-        ax.text(0.5, yi, f"{n:,}", va="center", fontsize=8, color=SURFACE)
+        if pct >= 6:
+            ax.text(0.5, yi, f"{n:,}", va="center", fontsize=8, color=SURFACE)
+            ax.text(pct + 0.7, yi, f"{pct:.1f}%", va="center", fontsize=9, color=INK2)
+        else:
+            ax.text(
+                pct + 0.7,
+                yi,
+                f"{pct:.1f}%   {n:,}",
+                va="center",
+                fontsize=9,
+                color=INK2,
+            )
 
     ax.set_yticks(list(y), df["label"], fontsize=9, color=INK2)
     ax.set_xlim(0, df["pct"].max() * 1.16)
